@@ -1,0 +1,15 @@
+services:
+  hle:
+    image: ghcr.io/hle-world/hle-docker:latest
+    container_name: hle
+    restart: unless-stopped
+    ports:
+      - "8099:8099"
+    volumes:
+      - hle-data:/data
+    environment:
+      - HLE_API_KEY=           # Optional: set here or configure via web UI
+      # - HLE_PORT=8099        # Optional: change the internal port
+
+volumes:
+  hle-data:
