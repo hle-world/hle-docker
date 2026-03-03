@@ -11,19 +11,21 @@ class TunnelConfig(BaseModel):
     id: str
     service_url: str
     label: str
-    name: Optional[str] = None          # display name; falls back to label if not set
+    name: Optional[str] = None  # display name; falls back to label if not set
     auth_mode: Literal["sso", "none"] = "sso"
     verify_ssl: bool = False
     websocket_enabled: bool = True
-    api_key: Optional[str] = None       # per-tunnel key override; falls back to global
-    upstream_basic_auth: Optional[str] = None   # "user:pass" injected into upstream requests
-    forward_host: bool = False           # forward browser's Host header to local service
-    subdomain: Optional[str] = None     # populated once tunnel connects to relay
+    api_key: Optional[str] = None  # per-tunnel key override; falls back to global
+    upstream_basic_auth: Optional[str] = (
+        None  # "user:pass" injected into upstream requests
+    )
+    forward_host: bool = False  # forward browser's Host header to local service
+    subdomain: Optional[str] = None  # populated once tunnel connects to relay
 
 
 class TunnelStatus(TunnelConfig):
     state: Literal["CONNECTED", "CONNECTING", "STOPPED", "FAILED"] = "STOPPED"
-    error: Optional[str] = None         # last error line from log when state is FAILED
+    error: Optional[str] = None  # last error line from log when state is FAILED
     public_url: Optional[str] = None
     pid: Optional[int] = None
 
@@ -47,8 +49,8 @@ class UpdateTunnelRequest(BaseModel):
     auth_mode: Optional[Literal["sso", "none"]] = None
     verify_ssl: Optional[bool] = None
     websocket_enabled: Optional[bool] = None
-    api_key: Optional[str] = None       # set to "" to clear the override
-    upstream_basic_auth: Optional[str] = None   # set to "" to clear
+    api_key: Optional[str] = None  # set to "" to clear the override
+    upstream_basic_auth: Optional[str] = None  # set to "" to clear
     forward_host: Optional[bool] = None
 
 

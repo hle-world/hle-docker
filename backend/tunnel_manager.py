@@ -9,7 +9,12 @@ import signal
 import uuid
 from pathlib import Path
 
-from backend.models import AddTunnelRequest, TunnelConfig, TunnelStatus, UpdateTunnelRequest
+from backend.models import (
+    AddTunnelRequest,
+    TunnelConfig,
+    TunnelStatus,
+    UpdateTunnelRequest,
+)
 
 LOG_DIR = Path("/data/logs")
 DATA_FILE = Path("/data/tunnels.json")
@@ -28,6 +33,7 @@ _user_stopped: set[str] = set()
 # Persistence
 # ---------------------------------------------------------------------------
 
+
 def _load_all() -> dict[str, TunnelConfig]:
     if not DATA_FILE.exists():
         return {}
@@ -45,10 +51,20 @@ def _save_all(tunnels: dict[str, TunnelConfig]) -> None:
 # Process management
 # ---------------------------------------------------------------------------
 
+
 async def _spawn(cfg: TunnelConfig) -> asyncio.subprocess.Process:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     log_file = open(LOG_DIR / f"tunnel-{cfg.id}.log", "ab")
-    cmd = ["hle", "expose", "--service", cfg.service_url, "--label", cfg.label, "--auth", cfg.auth_mode]
+    cmd = [
+        "hle",
+        "expose",
+        "--service",
+        cfg.service_url,
+        "--label",
+        cfg.label,
+        "--auth",
+        cfg.auth_mode,
+    ]
     if cfg.verify_ssl:
         cmd.append("--verify-ssl")
     if not cfg.websocket_enabled:
@@ -76,6 +92,7 @@ def _is_running(proc: asyncio.subprocess.Process | None) -> bool:
 async def _detect_subdomain(cfg_id: str, service_url: str, label: str) -> None:
     """Poll the relay API until the tunnel appears, then mark it connected."""
     from backend import hle_api
+
     for _ in range(15):  # up to ~30 seconds
         await asyncio.sleep(2)
         # Stop polling if process already exited (bad key, crash, etc.)
@@ -85,7 +102,10 @@ async def _detect_subdomain(cfg_id: str, service_url: str, label: str) -> None:
         try:
             live = await hle_api.list_live_tunnels()
             for t in live:
-                if t.get("service_url") == service_url or t.get("service_label") == label:
+                if (
+                    t.get("service_url") == service_url
+                    or t.get("service_label") == label
+                ):
                     subdomain = t.get("subdomain") or t.get("service_label")
                     if subdomain:
                         tunnels = _load_all()
@@ -101,6 +121,7 @@ async def _detect_subdomain(cfg_id: str, service_url: str, label: str) -> None:
 # ---------------------------------------------------------------------------
 # Public async API
 # ---------------------------------------------------------------------------
+
 
 async def restore_all() -> None:
     """Start all saved tunnels. Skips silently if no API key is configured —
@@ -175,9 +196,8 @@ async def update_tunnel(tunnel_id: str, req: UpdateTunnelRequest) -> TunnelConfi
         changed["upstream_basic_auth"] = req.upstream_basic_auth or None
 
     # Track if label/service changed so we clear the stale subdomain
-    label_or_url_changed = (
-        ("label" in changed and changed["label"] != cfg.label)
-        or ("service_url" in changed and changed["service_url"] != cfg.service_url)
+    label_or_url_changed = ("label" in changed and changed["label"] != cfg.label) or (
+        "service_url" in changed and changed["service_url"] != cfg.service_url
     )
 
     for field, value in changed.items():
