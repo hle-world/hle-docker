@@ -20,6 +20,7 @@ async def list_live_tunnels() -> list[dict]:
 # Access rules
 # ---------------------------------------------------------------------------
 
+
 async def list_access_rules(subdomain: str) -> list[dict]:
     return await _client().list_access_rules(subdomain)
 
@@ -35,6 +36,7 @@ async def delete_access_rule(subdomain: str, rule_id: int) -> dict:
 # ---------------------------------------------------------------------------
 # PIN protection
 # ---------------------------------------------------------------------------
+
 
 async def get_pin_status(subdomain: str) -> dict:
     return await _client().get_tunnel_pin_status(subdomain)
@@ -52,6 +54,7 @@ async def remove_pin(subdomain: str) -> dict:
 # Basic auth
 # ---------------------------------------------------------------------------
 
+
 async def get_basic_auth_status(subdomain: str) -> dict:
     return await _client().get_tunnel_basic_auth_status(subdomain)
 
@@ -68,12 +71,17 @@ async def remove_basic_auth(subdomain: str) -> dict:
 # Share links
 # ---------------------------------------------------------------------------
 
+
 async def list_share_links(subdomain: str) -> list[dict]:
     return await _client().list_share_links(subdomain)
 
 
-async def create_share_link(subdomain: str, duration: str, label: str, max_uses: int | None) -> dict:
-    return await _client().create_share_link(subdomain, duration=duration, label=label, max_uses=max_uses)
+async def create_share_link(
+    subdomain: str, duration: str, label: str, max_uses: int | None
+) -> dict:
+    return await _client().create_share_link(
+        subdomain, duration=duration, label=label, max_uses=max_uses
+    )
 
 
 async def delete_share_link(subdomain: str, link_id: int) -> dict:
