@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles  # noqa: F401 — used in conditional mount below
 
 from backend import hle_api
@@ -109,6 +111,113 @@ async def get_tunnel_logs(tunnel_id: str, lines: int = 100):
     text = log_path.read_text(errors="replace")
     all_lines = text.splitlines()
     return {"lines": all_lines[-lines:]}
+
+
+@app.get("/api/tunnels/{tunnel_id}/logs/download")
+async def download_tunnel_logs(tunnel_id: str, lines: int = 2000):
+    """Download the last N log lines as a plain text file."""
+    log_path = Path(f"/data/logs/tunnel-{tunnel_id}.log")
+    if not log_path.exists():
+        raise HTTPException(status_code=404, detail="No log file found")
+    text = log_path.read_text(errors="replace")
+    all_lines = text.splitlines()
+    content = "\n".join(all_lines[-lines:])
+    return Response(
+        content=content,
+        media_type="text/plain",
+        headers={
+            "Content-Disposition": f'attachment; filename="tunnel-{tunnel_id}.log"'
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Favicon proxy (fetches from the tunnel's local service URL)
+# ---------------------------------------------------------------------------
+
+FAVICON_DIR = Path("/data/favicons")
+
+
+@app.get("/api/tunnels/{tunnel_id}/favicon")
+async def get_tunnel_favicon(tunnel_id: str):
+    """Return the favicon from the tunnel's local service, cached on disk."""
+    # Serve from cache if available
+    cached = FAVICON_DIR / tunnel_id
+    if cached.exists():
+        data = cached.read_bytes()
+        ct = "image/x-icon"
+        if data[:8] == b"\x89PNG\r\n\x1a\n":
+            ct = "image/png"
+        elif data[:5] in (b"<?xml", b"<svg "):
+            ct = "image/svg+xml"
+        return Response(content=data, media_type=ct)
+
+    # Look up tunnel config to get service_url
+    status = tm.get_tunnel(tunnel_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Tunnel not found")
+
+    service_url = status.service_url.rstrip("/")
+
+    async with httpx.AsyncClient(timeout=3, verify=False) as client:  # nosec B501 — local LAN services often use self-signed certs
+        # Try /favicon.ico first
+        icon_data: bytes | None = None
+        icon_ct = "image/x-icon"
+        try:
+            resp = await client.get(f"{service_url}/favicon.ico", follow_redirects=True)
+            if resp.status_code == 200 and len(resp.content) > 0:
+                ct_header = resp.headers.get("content-type", "")
+                if (
+                    "image" in ct_header
+                    or "octet-stream" in ct_header
+                    or resp.content[:4] in (b"\x00\x00\x01\x00", b"\x89PNG")
+                ):
+                    icon_data = resp.content
+                    if "png" in ct_header:
+                        icon_ct = "image/png"
+                    elif "svg" in ct_header:
+                        icon_ct = "image/svg+xml"
+        except Exception:
+            pass
+
+        # Fallback: parse <link rel="icon"> from HTML
+        if icon_data is None:
+            try:
+                resp = await client.get(service_url, follow_redirects=True)
+                if resp.status_code == 200:
+                    html = resp.text[:8192]  # only scan the head
+                    match = re.search(
+                        r'<link[^>]+rel=["\'](?:shortcut )?icon["\'][^>]+href=["\']([^"\']+)',
+                        html,
+                        re.IGNORECASE,
+                    )
+                    if match:
+                        href = match.group(1)
+                        if href.startswith("//"):
+                            href = "http:" + href
+                        elif href.startswith("/"):
+                            href = service_url + href
+                        elif not href.startswith("http"):
+                            href = service_url + "/" + href
+                        icon_resp = await client.get(href, follow_redirects=True)
+                        if icon_resp.status_code == 200 and len(icon_resp.content) > 0:
+                            icon_data = icon_resp.content
+                            ct_header = icon_resp.headers.get("content-type", "")
+                            if "png" in ct_header:
+                                icon_ct = "image/png"
+                            elif "svg" in ct_header:
+                                icon_ct = "image/svg+xml"
+            except Exception:
+                pass
+
+    if icon_data is None:
+        raise HTTPException(status_code=404, detail="No favicon found")
+
+    # Cache to disk
+    FAVICON_DIR.mkdir(parents=True, exist_ok=True)
+    cached.write_bytes(icon_data)
+
+    return Response(content=icon_data, media_type=icon_ct)
 
 
 # ---------------------------------------------------------------------------
