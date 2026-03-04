@@ -8,6 +8,7 @@ import os
 import signal
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 from backend.models import (
     AddTunnelRequest,
@@ -106,18 +107,27 @@ async def _monitor_tunnel(cfg_id: str, service_url: str, label: str) -> None:
         try:
             live = await hle_api.list_live_tunnels()
             for t in live:
-                if (
-                    t.get("service_url") == service_url
-                    or t.get("service_label") == label
-                ):
-                    subdomain = t.get("subdomain") or t.get("service_label")
-                    if subdomain:
-                        tunnels = _load_all()
-                        if cfg_id in tunnels:
-                            tunnels[cfg_id].subdomain = subdomain
-                            _save_all(tunnels)
-                        _connected.add(cfg_id)
-                        return True
+                # Match by service_url (primary key from relay API)
+                if t.get("service_url") != service_url:
+                    continue
+
+                # Extract subdomain — use multiple fallbacks for robustness:
+                # 1. Direct subdomain field (should be "label-x7k")
+                subdomain = t.get("subdomain")
+
+                # 2. If subdomain missing, try parsing from public_url
+                if not subdomain and t.get("public_url"):
+                    parsed_host = urlparse(t["public_url"]).hostname or ""
+                    subdomain = parsed_host.split(".")[0]  # Extract "label-x7k" from "label-x7k.hle.world"
+
+                # Validate: subdomain must have user_code suffix (format: "label-CODE")
+                if subdomain and "-" in subdomain:
+                    tunnels = _load_all()
+                    if cfg_id in tunnels:
+                        tunnels[cfg_id].subdomain = subdomain
+                        _save_all(tunnels)
+                    _connected.add(cfg_id)
+                    return True
         except Exception:
             pass
         return False

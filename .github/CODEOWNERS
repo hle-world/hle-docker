@@ -1,0 +1,6 @@
+# Workflow security — require owner review for CI/CD changes
+/.github/workflows/ @hle-world/owners
+
+# Docker configuration — require review
+Dockerfile* @hle-world/owners
+docker-compose.yml @hle-world/owners
