@@ -193,12 +193,16 @@ async def get_tunnel_favicon(tunnel_id: str):
                     )
                     if match:
                         href = match.group(1)
+                        # Resolve relative to final URL (after redirects)
+                        base_url = str(resp.url).rstrip("/")
                         if href.startswith("//"):
                             href = "http:" + href
                         elif href.startswith("/"):
+                            # Absolute path — use service origin
                             href = service_url + href
                         elif not href.startswith("http"):
-                            href = service_url + "/" + href
+                            # Relative path — resolve against final URL
+                            href = base_url + "/" + href
                         icon_resp = await client.get(href, follow_redirects=True)
                         if icon_resp.status_code == 200 and len(icon_resp.content) > 0:
                             icon_data = icon_resp.content
