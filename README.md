@@ -2,9 +2,16 @@
 
 Run [Home Lab Everywhere](https://hle.world) tunnels on any Docker host — Synology, Unraid, bare metal, and more.
 
-Includes a web UI for managing tunnels, access rules, PIN protection, basic auth, and share links.
+Two variants available:
+
+| Tag | Description |
+|-----|-------------|
+| `latest` | Full image with web UI for managing tunnels |
+| `headless` | API + CLI only — no web UI, lighter build |
 
 ## Quick Start
+
+### With Web UI
 
 ```bash
 docker run -d \
@@ -15,6 +22,29 @@ docker run -d \
 ```
 
 Open `http://your-host:8099` and enter your API key.
+
+### Headless (no UI)
+
+```bash
+docker run -d \
+  --name hle \
+  -p 8099:8099 \
+  -v hle-data:/data \
+  ghcr.io/hle-world/hle-docker:headless
+```
+
+Manage tunnels via CLI or API:
+
+```bash
+# Set API key
+docker exec hle hle config set-key YOUR_API_KEY
+
+# Start a tunnel
+docker exec hle hle expose --service http://host.docker.internal:8123 --label ha
+
+# List tunnels via API
+curl http://localhost:8099/api/tunnels
+```
 
 ## Docker Compose
 
@@ -35,12 +65,18 @@ volumes:
   hle-data:
 ```
 
+For headless, replace the image tag with `ghcr.io/hle-world/hle-docker:headless`, or use the headless profile:
+
+```bash
+docker compose --profile headless up -d
+```
+
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `HLE_API_KEY` | _(empty)_ | Your HLE API key. Can also be set via the web UI. |
-| `HLE_PORT` | `8099` | Port the web UI listens on inside the container. |
+| `HLE_API_KEY` | _(empty)_ | Your HLE API key. Can also be set via the web UI or CLI. |
+| `HLE_PORT` | `8099` | Port the server listens on inside the container. |
 
 ## Data Persistence
 
@@ -50,3 +86,20 @@ All configuration and tunnel state is stored in `/data`. Mount a volume to persi
 
 1. Create a free account at [hle.world/register](https://hle.world/register)
 2. Copy your API key from [hle.world/dashboard](https://hle.world/dashboard)
+
+## Building from Source
+
+```bash
+git clone https://github.com/hle-world/hle-docker.git
+cd hle-docker
+
+# Full image (with web UI)
+docker build -t hle-docker:local .
+
+# Headless (no UI)
+docker build -f Dockerfile.headless -t hle-docker:headless .
+```
+
+## Documentation
+
+Full documentation: [hle.world/docs/docker](https://hle.world/docs/docker)

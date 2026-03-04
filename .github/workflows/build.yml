@@ -47,12 +47,37 @@ jobs:
             echo "tags=${IMAGE}:dev-${SHA}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build and push
+      - name: Extract headless tags
+        id: headless-version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ "${EVENT_NAME}" = "release" ]; then
+            VERSION="${RELEASE_TAG#v}"
+            echo "tags=${IMAGE}:${VERSION}-headless,${IMAGE}:headless" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=${IMAGE}:dev-${SHA}-headless" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push (full)
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.version.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push (headless)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.headless
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.headless-version.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -11,5 +11,19 @@ services:
       - HLE_API_KEY=           # Optional: set here or configure via web UI
       # - HLE_PORT=8099        # Optional: change the internal port
 
+  # Headless variant — no web UI, API + CLI only (~same size, faster build)
+  # Usage: docker compose --profile headless up -d
+  hle-headless:
+    image: ghcr.io/hle-world/hle-docker:headless
+    container_name: hle
+    restart: unless-stopped
+    profiles: ["headless"]
+    ports:
+      - "8099:8099"
+    volumes:
+      - hle-data:/data
+    environment:
+      - HLE_API_KEY=
+
 volumes:
   hle-data:
