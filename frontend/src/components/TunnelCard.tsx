@@ -116,7 +116,19 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
   const [editSaving, setEditSaving] = useState(false)
 
   const sub = tunnel.subdomain
-  const [faviconOk, setFaviconOk] = useState(true)
+  const [faviconOk, setFaviconOk] = useState(false)
+  const [faviconChecked, setFaviconChecked] = useState(false)
+
+  // Retry favicon when tunnel becomes CONNECTED
+  useEffect(() => {
+    if (tunnel.state === 'CONNECTED' && !faviconChecked) {
+      setFaviconOk(true)
+      setFaviconChecked(true)
+    }
+    if (tunnel.state !== 'CONNECTED') {
+      setFaviconChecked(false)
+    }
+  }, [tunnel.state, faviconChecked])
 
   async function togglePanel(p: Panel) {
     setError('')
