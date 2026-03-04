@@ -67,9 +67,11 @@ jobs:
           if [[ "$SOURCE" == "client-sync" ]]; then
             NOTES="Synced to hle-client v${VERSION}. See [hle-client release notes](https://github.com/hle-world/hle-client/releases/tag/v${VERSION}) for details."
           elif [[ "$SOURCE" == "addon-sync" ]]; then
-            NOTES="Synced from ha-addon: ${PR_TITLE} (#${PR_NUMBER})"
+            # Use printf to safely escape PR_TITLE (user-controlled input)
+            NOTES=$(printf 'Synced from ha-addon: %s (#%s)' "$PR_TITLE" "$PR_NUMBER")
           else
-            NOTES="${PR_TITLE} (#${PR_NUMBER})"
+            # Use printf to safely escape PR_TITLE (user-controlled input)
+            NOTES=$(printf '%s (#%s)' "$PR_TITLE" "$PR_NUMBER")
           fi
           gh release create "v${VERSION}" \
             --title "v${VERSION}" \
