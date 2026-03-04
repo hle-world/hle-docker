@@ -330,7 +330,17 @@ def _make_status(tunnel_id: str, cfg: TunnelConfig) -> TunnelStatus:
             state = "FAILED"
             error = _last_error_line(tunnel_id)
     elif tunnel_id in _connected:
-        state = "CONNECTED"
+        # Cross-check with the log — the relay API poll can race with fast
+        # connect/disconnect cycles (e.g. 4003 tunnel-limit rejection).
+        last_line = _last_error_line(tunnel_id)
+        if last_line and (
+            "Reconnecting" in last_line or "Connection lost" in last_line
+        ):
+            state = "CONNECTING"
+            error = last_line
+            _connected.discard(tunnel_id)
+        else:
+            state = "CONNECTED"
     else:
         state = "CONNECTING"
         # Surface the last log line so the UI can show relay errors
