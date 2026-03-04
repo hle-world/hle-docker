@@ -1,0 +1,65 @@
+name: Sync changes from ha-addon
+
+# Triggered by ha-addon's auto-release workflow when an addon-only PR
+# (not a client sync) is merged. Opens a tracking PR with the file mapping
+# so relevant backend/frontend changes can be applied to hle-docker.
+
+on:
+  repository_dispatch:
+    types: [ha-addon-changes]
+
+jobs:
+  sync-pr:
+    name: Open sync tracking PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create sync branch and PR
+        env:
+          GH_TOKEN: ${{ secrets.HLE_PAT }}
+          PR_TITLE: ${{ github.event.client_payload.pr_title }}
+          PR_NUMBER: ${{ github.event.client_payload.pr_number }}
+          PR_URL: ${{ github.event.client_payload.pr_url }}
+          VERSION: ${{ github.event.client_payload.version }}
+        run: |
+          BRANCH="sync/ha-addon-${PR_NUMBER}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git commit --allow-empty -m "Sync ha-addon PR #${PR_NUMBER}: ${PR_TITLE}"
+          git push -u origin "$BRANCH"
+
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "Sync from ha-addon: ${PR_TITLE}" \
+            --body "$(cat <<BODY
+          ## ha-addon PR #${PR_NUMBER}
+          ${PR_URL}
+
+          **${PR_TITLE}**
+
+          ### File Mapping (ha-addon → hle-docker)
+          | ha-addon | hle-docker |
+          |----------|-----------|
+          | \`hle/backend/main.py\` | \`backend/main.py\` |
+          | \`hle/backend/tunnel_manager.py\` | \`backend/tunnel_manager.py\` |
+          | \`hle/backend/hle_api.py\` | \`backend/hle_api.py\` |
+          | \`hle/backend/models.py\` | \`backend/models.py\` |
+          | \`hle/frontend/src/components/\` | \`frontend/src/components/\` |
+          | \`hle/frontend/src/api/\` | \`frontend/src/api/\` |
+
+          ### Checklist
+          - [ ] Review ha-addon PR changes
+          - [ ] Apply relevant backend changes
+          - [ ] Apply relevant frontend changes
+          - [ ] Test locally
+          - [ ] Merge and release
+          BODY
+          )"
