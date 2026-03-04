@@ -1,0 +1,21 @@
+# ---------- Headless (no UI) ----------
+# Lighter image — backend + CLI only, no Node.js or frontend assets.
+# The backend returns {"status": "frontend not built"} at / when static/ is missing.
+FROM python:3.12-slim
+
+RUN pip install --no-cache-dir \
+        hle-client==1.12.0 \
+        fastapi \
+        uvicorn
+
+COPY backend/ /app/backend/
+COPY run.sh /run.sh
+RUN chmod +x /run.sh && mkdir -p /data/logs
+
+EXPOSE 8099
+VOLUME /data
+
+ENV HLE_API_KEY=""
+ENV HLE_PORT=8099
+
+CMD ["/run.sh"]
