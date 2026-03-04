@@ -83,7 +83,7 @@ export function AddTunnelModal({ onClose, onAdded }: Props) {
           <input style={inputStyle} value={label} onChange={e => setLabel(e.target.value)}
             placeholder="jellyfin" />
           <span style={{ fontSize: 12, color: '#6b7280' }}>
-            Subdomain: <code style={{ color: '#9ca3af' }}>{label || 'label'}-xxx.hle.world</code>
+            Subdomain: <code style={{ color: '#9ca3af' }}>{label || 'label'}.hle.world</code>
           </span>
         </div>
 
