@@ -25,7 +25,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@692973e3d937d1afb5f8355e64d32566a30ded47
 
       - name: Resolve version
         id: ver

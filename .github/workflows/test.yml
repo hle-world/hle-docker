@@ -16,9 +16,9 @@ jobs:
     name: Lint backend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@692973e3d937d1afb5f8355e64d32566a30ded47
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@f677139edd7d1d27f0684c23c28b75935482262e
         with:
           python-version: '3.12'
 
@@ -35,9 +35,9 @@ jobs:
     name: Check frontend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@692973e3d937d1afb5f8355e64d32566a30ded47
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@1f8c6b94b26d0feae1666245b2fb7324019d73bf
         with:
           node-version: '22'
 
@@ -57,9 +57,9 @@ jobs:
     name: Security scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@692973e3d937d1afb5f8355e64d32566a30ded47
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@f677139edd7d1d27f0684c23c28b75935482262e
         with:
           python-version: '3.12'
 
