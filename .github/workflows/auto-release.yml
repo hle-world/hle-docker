@@ -1,9 +1,14 @@
-name: Auto-release on sync PR merge
+name: Auto-release on PR merge
 
-# Triggered when a sync/hle-client-v* PR is merged into main.
-# Creates a GitHub release, which triggers the Docker build workflow.
-# Unlike ha-addon, no pre-release/promote pattern is needed — Docker users
-# pull by tag, and the tag only exists after the build completes.
+# Creates a GitHub release when any PR is merged to main.
+# This triggers the Docker build workflow (build.yml).
+#
+# Version logic:
+#   - sync/hle-client-v* PRs: version from Dockerfile hle-client== pin
+#   - sync/ha-addon-* PRs: bump patch from latest release tag
+#   - All other PRs: bump patch from latest release tag
+#
+# Skip release: add [skip release] to the PR title
 
 on:
   pull_request:
@@ -13,27 +18,59 @@ on:
 jobs:
   release:
     name: Create release
-    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'sync/hle-client-v')
+    if: >-
+      github.event.pull_request.merged == true &&
+      !contains(github.event.pull_request.title, '[skip release]')
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Read target version from Dockerfile
+      - name: Determine version
         id: ver
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          GH_TOKEN: ${{ secrets.HLE_PAT }}
         run: |
-          VERSION=$(grep 'hle-client==' Dockerfile | sed 's/.*hle-client==\([0-9][0-9.]*\).*/\1/')
+          if [[ "$HEAD_REF" == sync/hle-client-v* ]]; then
+            # Client sync: version from Dockerfile pin
+            VERSION=$(grep 'hle-client==' Dockerfile | sed 's/.*hle-client==\([0-9][0-9.]*\).*/\1/')
+            echo "source=client-sync" >> "$GITHUB_OUTPUT"
+          else
+            # Addon sync or other: bump patch from latest release tag
+            LATEST=$(gh release view --json tagName -q .tagName 2>/dev/null || echo "v0.0.0")
+            LATEST="${LATEST#v}"
+            MAJOR=$(echo "$LATEST" | cut -d. -f1)
+            MINOR=$(echo "$LATEST" | cut -d. -f2)
+            PATCH=$(echo "$LATEST" | cut -d. -f3)
+            VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+            if [[ "$HEAD_REF" == sync/ha-addon-* ]]; then
+              echo "source=addon-sync" >> "$GITHUB_OUTPUT"
+            else
+              echo "source=other" >> "$GITHUB_OUTPUT"
+            fi
+          fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Create release
         env:
-          # Must use a PAT here — GITHUB_TOKEN-created releases do not cascade
-          # to trigger other workflows (GitHub anti-loop protection).
           GH_TOKEN: ${{ secrets.HLE_PAT }}
           VERSION: ${{ steps.ver.outputs.version }}
+          SOURCE: ${{ steps.ver.outputs.source }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
+          if [[ "$SOURCE" == "client-sync" ]]; then
+            NOTES="Synced to hle-client v${VERSION}. See [hle-client release notes](https://github.com/hle-world/hle-client/releases/tag/v${VERSION}) for details."
+          elif [[ "$SOURCE" == "addon-sync" ]]; then
+            NOTES="Synced from ha-addon: ${PR_TITLE} (#${PR_NUMBER})"
+          else
+            NOTES="${PR_TITLE} (#${PR_NUMBER})"
+          fi
           gh release create "v${VERSION}" \
             --title "v${VERSION}" \
-            --notes "Synced to hle-client v${VERSION}. See [hle-client release notes](https://github.com/hle-world/hle-client/releases/tag/v${VERSION}) for details."
+            --notes "$NOTES"
