@@ -159,26 +159,36 @@ async def get_tunnel_favicon(tunnel_id: str):
 
     service_url = status.service_url.rstrip("/")
 
-    async with httpx.AsyncClient(timeout=3, verify=False) as client:  # nosec B501 — local LAN services often use self-signed certs
-        # Try /favicon.ico first
+    # Common favicon paths — services like Jellyfin use /web/favicon.ico
+    favicon_paths = [
+        "/favicon.ico",
+        "/web/favicon.ico",
+        "/favicon.png",
+        "/favicon.svg",
+    ]
+
+    async with httpx.AsyncClient(timeout=5, verify=False) as client:  # nosec B501 — local LAN services often use self-signed certs
         icon_data: bytes | None = None
         icon_ct = "image/x-icon"
-        try:
-            resp = await client.get(f"{service_url}/favicon.ico", follow_redirects=True)
-            if resp.status_code == 200 and len(resp.content) > 0:
-                ct_header = resp.headers.get("content-type", "")
-                if (
-                    "image" in ct_header
-                    or "octet-stream" in ct_header
-                    or resp.content[:4] in (b"\x00\x00\x01\x00", b"\x89PNG")
-                ):
-                    icon_data = resp.content
-                    if "png" in ct_header:
-                        icon_ct = "image/png"
-                    elif "svg" in ct_header:
-                        icon_ct = "image/svg+xml"
-        except Exception:
-            pass
+
+        for path in favicon_paths:
+            try:
+                resp = await client.get(f"{service_url}{path}", follow_redirects=True)
+                if resp.status_code == 200 and len(resp.content) > 0:
+                    ct_header = resp.headers.get("content-type", "")
+                    if (
+                        "image" in ct_header
+                        or "octet-stream" in ct_header
+                        or resp.content[:4] in (b"\x00\x00\x01\x00", b"\x89PNG")
+                    ):
+                        icon_data = resp.content
+                        if "png" in ct_header:
+                            icon_ct = "image/png"
+                        elif "svg" in ct_header:
+                            icon_ct = "image/svg+xml"
+                        break
+            except Exception:
+                pass
 
         # Fallback: parse <link rel="icon"> from HTML
         if icon_data is None:
