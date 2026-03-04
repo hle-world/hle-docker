@@ -89,12 +89,15 @@ def _is_running(proc: asyncio.subprocess.Process | None) -> bool:
     return proc is not None and proc.returncode is None
 
 
-async def _detect_subdomain(cfg_id: str, service_url: str, label: str) -> None:
-    """Poll the relay API until the tunnel appears, then mark it connected.
+async def _monitor_tunnel(cfg_id: str, service_url: str, label: str) -> None:
+    """Detect subdomain, then continuously monitor tunnel health on the relay.
 
     Phase 1: poll every 2 s for 30 s (fast detection for happy path).
     Phase 2: poll every 10 s indefinitely while the process is alive
              (handles delayed connection, e.g. after max-tunnels clears).
+    Phase 3: after connection, poll every 30 s to verify the tunnel stays
+             on the relay. Removes from _connected if it disappears (e.g.
+             server closed with 4003 for exceeding tunnel limit).
     """
     from backend import hle_api
 
@@ -126,16 +129,36 @@ async def _detect_subdomain(cfg_id: str, service_url: str, label: str) -> None:
         if not _is_running(proc):
             return
         if await _poll_once():
-            return
+            break
+    else:
+        # Phase 2: slow polling (every 10 s) while process is alive
+        while True:
+            await asyncio.sleep(10)
+            proc = _processes.get(cfg_id)
+            if not _is_running(proc):
+                return
+            if await _poll_once():
+                break
 
-    # Phase 2: slow polling (every 10 s) while process is alive
+    # Phase 3: health monitoring — verify tunnel stays on relay
     while True:
-        await asyncio.sleep(10)
+        await asyncio.sleep(30)
         proc = _processes.get(cfg_id)
         if not _is_running(proc):
+            _connected.discard(cfg_id)
             return
-        if await _poll_once():
-            return
+        try:
+            live = await hle_api.list_live_tunnels()
+            found = any(
+                t.get("service_url") == service_url or t.get("service_label") == label
+                for t in live
+            )
+            if found:
+                _connected.add(cfg_id)
+            else:
+                _connected.discard(cfg_id)
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +179,7 @@ async def restore_all() -> None:
             proc = await _spawn(cfg)
             _processes[cfg.id] = proc
             _user_stopped.discard(cfg.id)
-            asyncio.create_task(_detect_subdomain(cfg.id, cfg.service_url, cfg.label))
+            asyncio.create_task(_monitor_tunnel(cfg.id, cfg.service_url, cfg.label))
         except Exception as exc:
             print(f"[hle] Failed to restore tunnel {cfg.id}: {exc}")
 
@@ -196,7 +219,7 @@ async def add_tunnel(req: AddTunnelRequest) -> TunnelConfig:
     _processes[cfg.id] = proc
     tunnels[cfg.id] = cfg
     _save_all(tunnels)
-    asyncio.create_task(_detect_subdomain(cfg.id, cfg.service_url, cfg.label))
+    asyncio.create_task(_monitor_tunnel(cfg.id, cfg.service_url, cfg.label))
     return cfg
 
 
@@ -246,7 +269,7 @@ async def update_tunnel(tunnel_id: str, req: UpdateTunnelRequest) -> TunnelConfi
     _user_stopped.discard(tunnel_id)
     new_proc = await _spawn(cfg)
     _processes[tunnel_id] = new_proc
-    asyncio.create_task(_detect_subdomain(cfg.id, cfg.service_url, cfg.label))
+    asyncio.create_task(_monitor_tunnel(cfg.id, cfg.service_url, cfg.label))
 
     return cfg
 
@@ -278,7 +301,7 @@ async def start_tunnel(tunnel_id: str) -> None:
         _connected.discard(tunnel_id)
         _user_stopped.discard(tunnel_id)
         _processes[tunnel_id] = await _spawn(cfg)
-        asyncio.create_task(_detect_subdomain(cfg.id, cfg.service_url, cfg.label))
+        asyncio.create_task(_monitor_tunnel(cfg.id, cfg.service_url, cfg.label))
 
 
 async def stop_tunnel(tunnel_id: str) -> None:
