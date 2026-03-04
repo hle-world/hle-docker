@@ -90,15 +90,16 @@ def _is_running(proc: asyncio.subprocess.Process | None) -> bool:
 
 
 async def _detect_subdomain(cfg_id: str, service_url: str, label: str) -> None:
-    """Poll the relay API until the tunnel appears, then mark it connected."""
+    """Poll the relay API until the tunnel appears, then mark it connected.
+
+    Phase 1: poll every 2 s for 30 s (fast detection for happy path).
+    Phase 2: poll every 10 s indefinitely while the process is alive
+             (handles delayed connection, e.g. after max-tunnels clears).
+    """
     from backend import hle_api
 
-    for _ in range(15):  # up to ~30 seconds
-        await asyncio.sleep(2)
-        # Stop polling if process already exited (bad key, crash, etc.)
-        proc = _processes.get(cfg_id)
-        if not _is_running(proc):
-            return
+    async def _poll_once() -> bool:
+        """Return True if the tunnel was found on the relay."""
         try:
             live = await hle_api.list_live_tunnels()
             for t in live:
@@ -113,9 +114,28 @@ async def _detect_subdomain(cfg_id: str, service_url: str, label: str) -> None:
                             tunnels[cfg_id].subdomain = subdomain
                             _save_all(tunnels)
                         _connected.add(cfg_id)
-                        return
+                        return True
         except Exception:
             pass
+        return False
+
+    # Phase 1: fast polling (every 2 s, up to ~30 s)
+    for _ in range(15):
+        await asyncio.sleep(2)
+        proc = _processes.get(cfg_id)
+        if not _is_running(proc):
+            return
+        if await _poll_once():
+            return
+
+    # Phase 2: slow polling (every 10 s) while process is alive
+    while True:
+        await asyncio.sleep(10)
+        proc = _processes.get(cfg_id)
+        if not _is_running(proc):
+            return
+        if await _poll_once():
+            return
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +225,9 @@ async def update_tunnel(tunnel_id: str, req: UpdateTunnelRequest) -> TunnelConfi
 
     if label_or_url_changed:
         cfg.subdomain = None
+        # Clear cached favicon when service URL changes
+        favicon_path = Path("/data/favicons") / tunnel_id
+        favicon_path.unlink(missing_ok=True)
 
     tunnels[tunnel_id] = cfg
     _save_all(tunnels)
@@ -241,6 +264,9 @@ async def remove_tunnel(tunnel_id: str) -> None:
     tunnels = _load_all()
     tunnels.pop(tunnel_id, None)
     _save_all(tunnels)
+    # Clean up cached favicon
+    favicon_path = Path("/data/favicons") / tunnel_id
+    favicon_path.unlink(missing_ok=True)
 
 
 async def start_tunnel(tunnel_id: str) -> None:
@@ -307,6 +333,9 @@ def _make_status(tunnel_id: str, cfg: TunnelConfig) -> TunnelStatus:
         state = "CONNECTED"
     else:
         state = "CONNECTING"
+        # Surface the last log line so the UI can show relay errors
+        # (e.g. "max tunnels reached") instead of a generic message.
+        error = _last_error_line(tunnel_id)
 
     public_url = f"https://{cfg.subdomain}.hle.world" if cfg.subdomain else None
     return TunnelStatus(

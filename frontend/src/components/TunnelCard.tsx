@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { TunnelStatus, AccessRule, ShareLink, BasicAuthStatus } from '../api/client'
 import {
   startTunnel, stopTunnel, removeTunnel, updateTunnel,
@@ -81,6 +81,27 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
 
   // Logs state
   const [logs, setLogs] = useState<string[] | null>(null)
+  const logsRef = useRef<HTMLPreElement>(null)
+
+  // Auto-refresh logs when panel is open
+  useEffect(() => {
+    if (panel !== 'logs') return
+    const fetchLogs = async () => {
+      try {
+        const result = await getTunnelLogs(tunnel.id)
+        setLogs(result.lines)
+      } catch { /* ignore */ }
+    }
+    const id = setInterval(fetchLogs, 3000)
+    return () => clearInterval(id)
+  }, [panel, tunnel.id])
+
+  // Auto-scroll logs to bottom when new content arrives
+  useEffect(() => {
+    if (logsRef.current) {
+      logsRef.current.scrollTop = logsRef.current.scrollHeight
+    }
+  }, [logs])
 
   // Edit state (mirrors current tunnel values)
   const [editServiceUrl, setEditServiceUrl] = useState(tunnel.service_url)
@@ -95,6 +116,7 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
   const [editSaving, setEditSaving] = useState(false)
 
   const sub = tunnel.subdomain
+  const [faviconOk, setFaviconOk] = useState(true)
 
   async function togglePanel(p: Panel) {
     setError('')
@@ -303,7 +325,17 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          <span style={{ fontWeight: 700, fontSize: 15 }}>
+          <span style={{ fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 6 }}>
+            {faviconOk && (
+              <img
+                src={`./api/tunnels/${tunnel.id}/favicon`}
+                alt=""
+                width={20}
+                height={20}
+                style={{ borderRadius: 3, flexShrink: 0 }}
+                onError={() => setFaviconOk(false)}
+              />
+            )}
             {tunnel.name || tunnel.label}
             {tunnel.name && (
               <span style={{ color: '#6b7280', fontWeight: 400, marginLeft: 8, fontSize: 12 }}>
@@ -316,7 +348,11 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
           </span>
           <span style={{ color: '#9ca3af', fontSize: 12 }}>{tunnel.service_url}</span>
           {tunnel.state === 'CONNECTING' && (
-            <span style={{ color: '#facc15', fontSize: 12 }}>Process running — connecting to relay…</span>
+            <span style={{ color: '#facc15', fontSize: 12 }}>
+              {tunnel.error
+                ? `Connection issue: ${tunnel.error}`
+                : 'Process running — connecting to relay…'}
+            </span>
           )}
           {tunnel.state === 'FAILED' && (
             <span style={{ color: '#f87171', fontSize: 12 }}>
@@ -677,13 +713,22 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
       {panel === 'logs' && (
         <div style={section}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={sectionTitle}>Tunnel Logs</span>
-            <button style={{ ...btn('ghost'), fontSize: 11 }}
-              onClick={async () => setLogs((await getTunnelLogs(tunnel.id)).lines)}>
-              Refresh
-            </button>
+            <span style={sectionTitle}>Tunnel Logs <span style={{ fontWeight: 400, fontSize: 11, color: '#6b7280' }}>(auto-refreshing)</span></span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <a
+                href={`./api/tunnels/${tunnel.id}/logs/download`}
+                download={`tunnel-${tunnel.id}.log`}
+                style={{ ...btn('ghost'), fontSize: 11, textDecoration: 'none', display: 'inline-block' }}
+              >
+                Download
+              </a>
+              <button style={{ ...btn('ghost'), fontSize: 11 }}
+                onClick={async () => setLogs((await getTunnelLogs(tunnel.id)).lines)}>
+                Refresh
+              </button>
+            </div>
           </div>
-          <pre style={{
+          <pre ref={logsRef} style={{
             background: '#0d1117', borderRadius: 6, padding: '10px 12px',
             fontSize: 11, color: '#9ca3af', overflowX: 'auto', maxHeight: 280,
             overflowY: 'auto', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
