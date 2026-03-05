@@ -178,8 +178,17 @@ async def shutdown_all() -> None:
         )
 
 
+class DuplicateLabelError(ValueError):
+    """Raised when a tunnel with the same label already exists."""
+
+
 async def add_tunnel(req: AddTunnelRequest) -> TunnelConfig:
     tunnels = _load_all()
+    for existing in tunnels.values():
+        if existing.label == req.label:
+            raise DuplicateLabelError(
+                f"A tunnel with label '{req.label}' already exists"
+            )
     cfg = TunnelConfig(
         id=uuid.uuid4().hex[:8],
         service_url=req.service_url,
@@ -214,6 +223,14 @@ async def update_tunnel(tunnel_id: str, req: UpdateTunnelRequest) -> TunnelConfi
         changed["api_key"] = req.api_key or None
     if "upstream_basic_auth" in req.model_fields_set:
         changed["upstream_basic_auth"] = req.upstream_basic_auth or None
+
+    # Reject label changes that collide with another tunnel
+    if "label" in changed and changed["label"] != cfg.label:
+        for tid, other in tunnels.items():
+            if tid != tunnel_id and other.label == changed["label"]:
+                raise DuplicateLabelError(
+                    f"A tunnel with label '{changed['label']}' already exists"
+                )
 
     # Track if label/service changed so we clear the stale subdomain
     label_or_url_changed = ("label" in changed and changed["label"] != cfg.label) or (
