@@ -25,6 +25,7 @@ from backend.models import (
     UpdateTunnelRequest,
 )
 from backend import tunnel_manager as tm
+from backend.tunnel_manager import DuplicateLabelError
 
 
 @asynccontextmanager
@@ -65,7 +66,10 @@ async def list_tunnels():
 @app.post("/api/tunnels", response_model=TunnelStatus, status_code=201)
 async def add_tunnel(req: AddTunnelRequest):
     _require_api_key()
-    cfg = await tm.add_tunnel(req)
+    try:
+        cfg = await tm.add_tunnel(req)
+    except DuplicateLabelError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     return tm.get_tunnel(cfg.id)
 
 
@@ -73,7 +77,10 @@ async def add_tunnel(req: AddTunnelRequest):
 async def update_tunnel(tunnel_id: str, req: UpdateTunnelRequest):
     if tm.get_tunnel(tunnel_id) is None:
         raise HTTPException(status_code=404, detail="Tunnel not found")
-    cfg = await tm.update_tunnel(tunnel_id, req)
+    try:
+        cfg = await tm.update_tunnel(tunnel_id, req)
+    except DuplicateLabelError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     return tm.get_tunnel(cfg.id)
 
 
