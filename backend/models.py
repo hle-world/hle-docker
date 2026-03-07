@@ -21,6 +21,7 @@ class TunnelConfig(BaseModel):
     )
     forward_host: bool = False  # forward browser's Host header to local service
     subdomain: Optional[str] = None  # populated once tunnel connects to relay
+    stopped: bool = False  # persisted: user explicitly stopped this tunnel
 
 
 class TunnelStatus(TunnelConfig):
