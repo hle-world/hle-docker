@@ -106,11 +106,12 @@ async def _monitor_tunnel(cfg_id: str, service_url: str, label: str) -> None:
         try:
             live = await hle_api.list_live_tunnels()
             for t in live:
-                if (
-                    t.get("service_url") == service_url
-                    or t.get("service_label") == label
-                ):
-                    subdomain = t.get("subdomain") or t.get("service_label")
+                t_label = t.get("service_label") or ""
+                # Match on label (unique per user on the relay).
+                # Previously matched on service_url OR label, which caused
+                # wrong subdomain assignment when multiple tunnels shared a URL.
+                if t_label == label:
+                    subdomain = t.get("subdomain") or t_label
                     if subdomain:
                         tunnels = _load_all()
                         if cfg_id in tunnels:
