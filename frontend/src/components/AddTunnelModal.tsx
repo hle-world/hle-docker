@@ -80,10 +80,14 @@ export function AddTunnelModal({ onClose, onAdded }: Props) {
 
         <div style={fieldStyle}>
           <label style={labelStyle}>Label <span style={{ color: '#6b7280', fontWeight: 400 }}>(used in subdomain)</span></label>
-          <input style={inputStyle} value={label} onChange={e => setLabel(e.target.value)}
+          <input style={inputStyle} value={label}
+            onChange={e => setLabel(e.target.value.toLowerCase().replace(/[_ .]+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-{2,}/g, '-'))}
             placeholder="jellyfin" />
           <span style={{ fontSize: 12, color: '#6b7280' }}>
-            Subdomain: <code style={{ color: '#9ca3af' }}>{label || 'label'}.hle.world</code>
+            Subdomain: <code style={{ color: '#9ca3af' }}>{label || 'label'}-<span style={{ opacity: 0.5 }}>xxx</span>.hle.world</code>
+          </span>
+          <span style={{ fontSize: 11, color: '#4b5563' }}>
+            Lowercase letters, numbers, and hyphens only. Your unique code is appended automatically.
           </span>
         </div>
 

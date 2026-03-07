@@ -441,7 +441,7 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={{ fontSize: 12, color: '#9ca3af' }}>Label (subdomain prefix)</label>
-              <input style={inputSm} value={editLabel} onChange={e => setEditLabel(e.target.value)} />
+              <input style={inputSm} value={editLabel} onChange={e => setEditLabel(e.target.value.toLowerCase().replace(/[_ .]+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-{2,}/g, '-'))} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={{ fontSize: 12, color: '#9ca3af' }}>Display name (optional)</label>
