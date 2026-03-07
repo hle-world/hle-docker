@@ -213,6 +213,9 @@ async def restore_all() -> None:
     for cfg in _load_all().values():
         if _is_running(_processes.get(cfg.id)):
             continue  # already running (e.g. called again after key is set)
+        if cfg.stopped:
+            _user_stopped.add(cfg.id)
+            continue  # user explicitly stopped this tunnel before restart
         try:
             proc = await _spawn(cfg)
             _processes[cfg.id] = proc
@@ -301,6 +304,8 @@ async def update_tunnel(tunnel_id: str, req: UpdateTunnelRequest) -> TunnelConfi
     for field, value in changed.items():
         setattr(cfg, field, value)
 
+    cfg.stopped = False  # editing implies user wants it running
+
     if label_or_url_changed:
         cfg.subdomain = None
         # Clear cached favicon when service URL changes
@@ -358,6 +363,11 @@ async def start_tunnel(tunnel_id: str) -> None:
         _connected.discard(tunnel_id)
         _user_stopped.discard(tunnel_id)
         _last_errors.pop(tunnel_id, None)
+        # Clear persisted stopped state
+        if cfg.stopped:
+            cfg.stopped = False
+            tunnels[tunnel_id] = cfg
+            _save_all(tunnels)
         _processes[tunnel_id] = await _spawn(cfg)
         asyncio.create_task(_monitor_tunnel(cfg.id, cfg.service_url, cfg.label))
 
@@ -373,6 +383,11 @@ async def stop_tunnel(tunnel_id: str) -> None:
             await asyncio.wait_for(proc.wait(), timeout=5.0)
         except asyncio.TimeoutError:
             proc.kill()
+    # Persist stopped state so it survives restarts
+    tunnels = _load_all()
+    if tunnel_id in tunnels:
+        tunnels[tunnel_id].stopped = True
+        _save_all(tunnels)
 
 
 def list_tunnels() -> list[TunnelStatus]:
