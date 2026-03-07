@@ -28,6 +28,9 @@ _connected: set[str] = set()
 # Tunnels explicitly stopped by the user — these show STOPPED, not FAILED.
 _user_stopped: set[str] = set()
 
+# Last meaningful error/warning line per tunnel (only WARNING/ERROR level).
+_last_errors: dict[str, str] = {}
+
 
 # ---------------------------------------------------------------------------
 # Persistence
@@ -54,7 +57,6 @@ def _save_all(tunnels: dict[str, TunnelConfig]) -> None:
 
 async def _spawn(cfg: TunnelConfig) -> asyncio.subprocess.Process:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    log_file = open(LOG_DIR / f"tunnel-{cfg.id}.log", "ab")
     cmd = [
         "hle",
         "expose",
@@ -76,17 +78,52 @@ async def _spawn(cfg: TunnelConfig) -> asyncio.subprocess.Process:
     env = {**os.environ}
     if cfg.api_key:
         env["HLE_API_KEY"] = cfg.api_key  # per-tunnel override; not visible in `ps`
-    return await asyncio.create_subprocess_exec(
+    proc = await asyncio.create_subprocess_exec(
         *cmd,
-        stdout=log_file,
+        stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
         env=env,
         start_new_session=True,
     )
+    # Stream stdout: write to log file AND parse for status in real-time
+    asyncio.create_task(_stream_output(cfg.id, proc))
+    return proc
+
+
+async def _stream_output(cfg_id: str, proc: asyncio.subprocess.Process) -> None:
+    """Read CLI stdout line-by-line, write to log file, and parse status."""
+    log_path = LOG_DIR / f"tunnel-{cfg_id}.log"
+    with open(log_path, "ab") as log_file:
+        assert proc.stdout is not None
+        while True:
+            line_bytes = await proc.stdout.readline()
+            if not line_bytes:
+                break
+            log_file.write(line_bytes)
+            log_file.flush()
+            line = line_bytes.decode("utf-8", errors="replace").strip()
+            if not line:
+                continue
+            _parse_status_line(cfg_id, line)
 
 
 def _is_running(proc: asyncio.subprocess.Process | None) -> bool:
     return proc is not None and proc.returncode is None
+
+
+def _parse_status_line(cfg_id: str, line: str) -> None:
+    """Parse a CLI log line and update tunnel state accordingly."""
+    if "Tunnel registered:" in line:
+        _connected.add(cfg_id)
+        _last_errors.pop(cfg_id, None)
+    elif "Connection lost:" in line:
+        _connected.discard(cfg_id)
+        _last_errors[cfg_id] = line
+    elif "Reconnecting in" in line:
+        _connected.discard(cfg_id)
+    elif "WARNING" in line or "ERROR" in line:
+        # Only store actual warning/error lines (not INFO traffic logs)
+        _last_errors[cfg_id] = line
 
 
 async def _monitor_tunnel(cfg_id: str, service_url: str, label: str) -> None:
@@ -285,6 +322,7 @@ async def update_tunnel(tunnel_id: str, req: UpdateTunnelRequest) -> TunnelConfi
     # Restart with updated config
     _connected.discard(tunnel_id)
     _user_stopped.discard(tunnel_id)
+    _last_errors.pop(tunnel_id, None)
     new_proc = await _spawn(cfg)
     _processes[tunnel_id] = new_proc
     asyncio.create_task(_monitor_tunnel(cfg.id, cfg.service_url, cfg.label))
@@ -295,6 +333,7 @@ async def update_tunnel(tunnel_id: str, req: UpdateTunnelRequest) -> TunnelConfi
 async def remove_tunnel(tunnel_id: str) -> None:
     _connected.discard(tunnel_id)
     _user_stopped.add(tunnel_id)
+    _last_errors.pop(tunnel_id, None)
     proc = _processes.pop(tunnel_id, None)
     if _is_running(proc):
         proc.terminate()
@@ -318,6 +357,7 @@ async def start_tunnel(tunnel_id: str) -> None:
     if not _is_running(_processes.get(tunnel_id)):
         _connected.discard(tunnel_id)
         _user_stopped.discard(tunnel_id)
+        _last_errors.pop(tunnel_id, None)
         _processes[tunnel_id] = await _spawn(cfg)
         asyncio.create_task(_monitor_tunnel(cfg.id, cfg.service_url, cfg.label))
 
@@ -325,6 +365,7 @@ async def start_tunnel(tunnel_id: str) -> None:
 async def stop_tunnel(tunnel_id: str) -> None:
     _connected.discard(tunnel_id)
     _user_stopped.add(tunnel_id)
+    _last_errors.pop(tunnel_id, None)
     proc = _processes.get(tunnel_id)
     if _is_running(proc):
         proc.terminate()
@@ -369,24 +410,12 @@ def _make_status(tunnel_id: str, cfg: TunnelConfig) -> TunnelStatus:
             state = "STOPPED"
         else:
             state = "FAILED"
-            error = _last_error_line(tunnel_id)
+            error = _last_errors.get(tunnel_id) or _last_error_line(tunnel_id)
     elif tunnel_id in _connected:
-        # Cross-check with the log — the relay API poll can race with fast
-        # connect/disconnect cycles (e.g. 4003 tunnel-limit rejection).
-        last_line = _last_error_line(tunnel_id)
-        if last_line and (
-            "Reconnecting" in last_line or "Connection lost" in last_line
-        ):
-            state = "CONNECTING"
-            error = last_line
-            _connected.discard(tunnel_id)
-        else:
-            state = "CONNECTED"
+        state = "CONNECTED"
     else:
         state = "CONNECTING"
-        # Surface the last log line so the UI can show relay errors
-        # (e.g. "max tunnels reached") instead of a generic message.
-        error = _last_error_line(tunnel_id)
+        error = _last_errors.get(tunnel_id)
 
     public_url = f"https://{cfg.subdomain}.hle.world" if cfg.subdomain else None
     return TunnelStatus(
