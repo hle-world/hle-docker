@@ -90,9 +90,7 @@ async def _spawn(cfg: TunnelConfig) -> asyncio.subprocess.Process:
     return proc
 
 
-async def _stream_output(
-    cfg_id: str, proc: asyncio.subprocess.Process
-) -> None:
+async def _stream_output(cfg_id: str, proc: asyncio.subprocess.Process) -> None:
     """Read CLI stdout line-by-line, write to log file, and parse status."""
     log_path = LOG_DIR / f"tunnel-{cfg_id}.log"
     with open(log_path, "ab") as log_file:
