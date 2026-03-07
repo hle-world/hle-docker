@@ -10,7 +10,7 @@ RUN npm run build
 FROM python:3.12-slim
 
 RUN pip install --no-cache-dir \
-        hle-client==1.14.0 \
+        hle-client==1.15.0 \
         fastapi \
         uvicorn
 
