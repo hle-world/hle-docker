@@ -42,17 +42,17 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "sync/hle-client-v${VERSION}"
 
-      - name: Bump Dockerfile pin
+      - name: Bump Dockerfile pins
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          sed -i "s/hle-client==[0-9][0-9.]*/hle-client==${VERSION}/" Dockerfile
+          sed -i "s/hle-client==[0-9][0-9.]*/hle-client==${VERSION}/" Dockerfile Dockerfile.headless
 
       - name: Commit and push
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          git add Dockerfile
+          git add Dockerfile Dockerfile.headless
           git commit -m "Sync to hle-client v${VERSION}"
           git push origin "sync/hle-client-v${VERSION}"
 
@@ -77,6 +77,6 @@ jobs:
           **After merging:** a release will be created automatically, triggering the Docker build.
 
           ---
-          *Automated bump: \`Dockerfile\` → \`hle-client==${VERSION}\`*
+          *Automated bump: \`Dockerfile\` + \`Dockerfile.headless\` → \`hle-client==${VERSION}\`*
           BODY
           )"
