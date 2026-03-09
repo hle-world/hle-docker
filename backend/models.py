@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class TunnelConfig(BaseModel):
@@ -32,7 +32,16 @@ class TunnelStatus(TunnelConfig):
     pid: Optional[int] = None
 
 
-class AddTunnelRequest(BaseModel):
+class _TimeoutValidator(BaseModel):
+    @field_validator("response_timeout")
+    @classmethod
+    def validate_response_timeout(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and not (1 <= v <= 1200):
+            raise ValueError("response_timeout must be between 1 and 1200 seconds")
+        return v
+
+
+class AddTunnelRequest(_TimeoutValidator):
     service_url: str
     label: str
     name: Optional[str] = None
@@ -45,7 +54,7 @@ class AddTunnelRequest(BaseModel):
     response_timeout: Optional[int] = None
 
 
-class UpdateTunnelRequest(BaseModel):
+class UpdateTunnelRequest(_TimeoutValidator):
     service_url: Optional[str] = None
     label: Optional[str] = None
     name: Optional[str] = None
