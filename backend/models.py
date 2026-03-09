@@ -20,6 +20,7 @@ class TunnelConfig(BaseModel):
         None  # "user:pass" injected into upstream requests
     )
     forward_host: bool = False  # forward browser's Host header to local service
+    response_timeout: Optional[int] = None  # server-side response timeout in seconds
     subdomain: Optional[str] = None  # populated once tunnel connects to relay
     stopped: bool = False  # persisted: user explicitly stopped this tunnel
 
@@ -41,6 +42,7 @@ class AddTunnelRequest(BaseModel):
     api_key: Optional[str] = None
     upstream_basic_auth: Optional[str] = None
     forward_host: bool = False
+    response_timeout: Optional[int] = None
 
 
 class UpdateTunnelRequest(BaseModel):
@@ -53,6 +55,7 @@ class UpdateTunnelRequest(BaseModel):
     api_key: Optional[str] = None  # set to "" to clear the override
     upstream_basic_auth: Optional[str] = None  # set to "" to clear
     forward_host: Optional[bool] = None
+    response_timeout: Optional[int] = None
 
 
 class UpdateConfigRequest(BaseModel):

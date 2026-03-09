@@ -35,6 +35,7 @@ export function AddTunnelModal({ onClose, onAdded }: Props) {
   const [apiKeyOverride, setApiKeyOverride] = useState('')
   const [upstreamBasicAuth, setUpstreamBasicAuth] = useState('')
   const [forwardHost, setForwardHost] = useState(false)
+  const [responseTimeout, setResponseTimeout] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -52,6 +53,7 @@ export function AddTunnelModal({ onClose, onAdded }: Props) {
         api_key: apiKeyOverride || undefined,
         upstream_basic_auth: upstreamBasicAuth || undefined,
         forward_host: forwardHost || undefined,
+        response_timeout: responseTimeout ? parseInt(responseTimeout, 10) : undefined,
       })
       onAdded()
     } catch (e) {
@@ -144,6 +146,19 @@ export function AddTunnelModal({ onClose, onAdded }: Props) {
               <input style={{ ...inputStyle, fontSize: 13 }} value={upstreamBasicAuth}
                 onChange={e => setUpstreamBasicAuth(e.target.value)}
                 placeholder="username:password" type="password" />
+            </div>
+
+            <div style={fieldStyle}>
+              <label style={{ ...labelStyle, fontSize: 12 }}>
+                Response timeout{' '}
+                <span style={{ color: '#6b7280', fontWeight: 400 }}>(seconds — default: 30, max: 1200)</span>
+              </label>
+              <input style={{ ...inputStyle, fontSize: 13 }} value={responseTimeout}
+                onChange={e => setResponseTimeout(e.target.value.replace(/\D/g, ''))}
+                placeholder="30" type="text" inputMode="numeric" />
+              <span style={{ fontSize: 11, color: '#4b5563' }}>
+                Increase for services that do heavy processing or trigger long pipelines.
+              </span>
             </div>
           </div>
         )}

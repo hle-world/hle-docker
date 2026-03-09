@@ -113,6 +113,7 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
   const [editApiKey, setEditApiKey] = useState(tunnel.api_key ?? '')
   const [editUpstreamBasicAuth, setEditUpstreamBasicAuth] = useState(tunnel.upstream_basic_auth ?? '')
   const [editForwardHost, setEditForwardHost] = useState(tunnel.forward_host)
+  const [editResponseTimeout, setEditResponseTimeout] = useState(tunnel.response_timeout?.toString() ?? '')
   const [editSaving, setEditSaving] = useState(false)
 
   const sub = tunnel.subdomain
@@ -147,6 +148,7 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
       setEditApiKey(tunnel.api_key ?? '')
       setEditUpstreamBasicAuth(tunnel.upstream_basic_auth ?? '')
       setEditForwardHost(tunnel.forward_host)
+      setEditResponseTimeout(tunnel.response_timeout?.toString() ?? '')
     }
     if (p === 'pin') { setNewPin(''); setConfirmPin('') }
     if (p === 'basic-auth') { setBaUsername(''); setBaPassword(''); setBaConfirmPassword('') }
@@ -200,6 +202,7 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
         api_key: editApiKey || null,
         upstream_basic_auth: editUpstreamBasicAuth || null,
         forward_host: editForwardHost,
+        response_timeout: editResponseTimeout ? parseInt(editResponseTimeout, 10) : null,
       })
       setPanel(null)
       onRefresh()
@@ -474,6 +477,18 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
             <input style={{ ...inputSm, fontFamily: 'monospace' }} value={editUpstreamBasicAuth}
               onChange={e => setEditUpstreamBasicAuth(e.target.value)}
               placeholder="username:password (optional)" type="password" />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={{ fontSize: 12, color: '#9ca3af' }}>
+                Response timeout{' '}
+                <span style={{ color: '#6b7280', fontWeight: 400 }}>(seconds)</span>
+              </label>
+              <input style={inputSm} value={editResponseTimeout}
+                onChange={e => setEditResponseTimeout(e.target.value.replace(/\D/g, ''))}
+                placeholder="30 (default)" type="text" inputMode="numeric" />
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
