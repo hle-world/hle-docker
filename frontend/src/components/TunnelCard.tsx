@@ -16,32 +16,34 @@ interface Props {
 }
 
 const card: React.CSSProperties = {
-  background: '#1e2128', border: '1px solid #2d3139', borderRadius: 10,
+  background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
   padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10,
 }
 const row: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }
 const section: React.CSSProperties = {
-  borderTop: '1px solid #2d3139', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8,
+  borderTop: '1px solid var(--border)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8,
 }
-const sectionTitle: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: '#9ca3af', marginBottom: 2 }
+const sectionTitle: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: 'var(--text-dim)', marginBottom: 2 }
 const btn = (variant: 'primary' | 'danger' | 'ghost' | 'active'): React.CSSProperties => ({
   padding: '5px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12,
-  background: variant === 'primary' ? '#3b82f6' : variant === 'danger' ? '#ef4444' : variant === 'active' ? '#1d4ed8' : '#2d3139',
-  color: '#fff', whiteSpace: 'nowrap',
+  fontFamily: 'inherit',
+  background: variant === 'primary' ? 'var(--mint)' : variant === 'danger' ? 'var(--red)' : variant === 'active' ? 'var(--mint-dim)' : 'var(--surface)',
+  color: variant === 'primary' || variant === 'active' ? 'var(--bg)' : variant === 'danger' ? '#fff' : 'var(--text-dim)',
+  whiteSpace: 'nowrap',
 })
 const inputSm: React.CSSProperties = {
-  padding: '5px 10px', borderRadius: 6, border: '1px solid #2d3139',
-  background: '#111318', color: '#e0e0e0', fontSize: 13,
+  padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)',
+  background: 'var(--bg)', color: 'var(--text)', fontSize: 13, fontFamily: 'inherit',
 }
 const inputErr: React.CSSProperties = {
-  ...inputSm, borderColor: '#ef4444',
+  ...inputSm, borderColor: 'var(--red)',
 }
 const warningBox: React.CSSProperties = {
-  background: '#422006', border: '1px solid #92400e', borderRadius: 6,
-  padding: '8px 12px', fontSize: 13, color: '#fbbf24',
+  background: 'var(--yellow-tint-bg)', border: '1px solid var(--yellow-tint-border)', borderRadius: 6,
+  padding: '8px 12px', fontSize: 13, color: 'var(--yellow)',
 }
 const confirmBox: React.CSSProperties = {
-  background: '#1c1917', border: '1px solid #44403c', borderRadius: 6,
+  background: 'var(--surface)', border: '1px solid var(--border-hi)', borderRadius: 6,
   padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8,
 }
 
@@ -51,39 +53,30 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
   const [panel, setPanel] = useState<Panel>(null)
   const [error, setError] = useState('')
 
-  // Access rules state
   const [rules, setRules] = useState<AccessRule[] | null>(null)
   const [newEmail, setNewEmail] = useState('')
   const [newProvider, setNewProvider] = useState('any')
 
-  // PIN state
   const [hasPin, setHasPin] = useState<boolean | null>(null)
   const [newPin, setNewPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
 
-  // Basic auth state
   const [basicAuth, setBasicAuthState] = useState<BasicAuthStatus | null>(null)
   const [baUsername, setBaUsername] = useState('')
   const [baPassword, setBaPassword] = useState('')
   const [baConfirmPassword, setBaConfirmPassword] = useState('')
 
-  // Conflict warning acknowledgement (reset when panel changes)
   const [conflictAcked, setConflictAcked] = useState(false)
-
-  // Confirmation dialog for destructive actions
   const [confirmAction, setConfirmAction] = useState<{ message: string; onConfirm: () => void } | null>(null)
 
-  // Share links state
   const [shareLinks, setShareLinks] = useState<ShareLink[] | null>(null)
   const [shareDuration, setShareDuration] = useState<'1h' | '24h' | '7d'>('24h')
   const [shareLabel, setShareLabel] = useState('')
   const [newShareUrl, setNewShareUrl] = useState<string | null>(null)
 
-  // Logs state
   const [logs, setLogs] = useState<string[] | null>(null)
   const logsRef = useRef<HTMLPreElement>(null)
 
-  // Auto-refresh logs when panel is open
   useEffect(() => {
     if (panel !== 'logs') return
     const fetchLogs = async () => {
@@ -96,7 +89,6 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
     return () => clearInterval(id)
   }, [panel, tunnel.id])
 
-  // Auto-scroll logs to bottom when new content arrives
   useEffect(() => {
     if (logsRef.current) {
       logsRef.current.scrollTop = logsRef.current.scrollHeight
@@ -113,13 +105,13 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
   const [editApiKey, setEditApiKey] = useState(tunnel.api_key ?? '')
   const [editUpstreamBasicAuth, setEditUpstreamBasicAuth] = useState(tunnel.upstream_basic_auth ?? '')
   const [editForwardHost, setEditForwardHost] = useState(tunnel.forward_host)
+  const [editResponseTimeout, setEditResponseTimeout] = useState(tunnel.response_timeout?.toString() ?? '')
   const [editSaving, setEditSaving] = useState(false)
 
   const sub = tunnel.subdomain
   const [faviconOk, setFaviconOk] = useState(false)
   const [faviconChecked, setFaviconChecked] = useState(false)
 
-  // Retry favicon when tunnel becomes CONNECTED
   useEffect(() => {
     if (tunnel.state === 'CONNECTED' && !faviconChecked) {
       setFaviconOk(true)
@@ -136,7 +128,6 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
     setConflictAcked(false)
     setConfirmAction(null)
     if (panel === p) { setPanel(null); return }
-    // Reset form fields when opening panels
     if (p === 'edit') {
       setEditServiceUrl(tunnel.service_url)
       setEditLabel(tunnel.label)
@@ -147,6 +138,7 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
       setEditApiKey(tunnel.api_key ?? '')
       setEditUpstreamBasicAuth(tunnel.upstream_basic_auth ?? '')
       setEditForwardHost(tunnel.forward_host)
+      setEditResponseTimeout(tunnel.response_timeout?.toString() ?? '')
     }
     if (p === 'pin') { setNewPin(''); setConfirmPin('') }
     if (p === 'basic-auth') { setBaUsername(''); setBaPassword(''); setBaConfirmPassword('') }
@@ -154,7 +146,6 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
     setPanel(p)
     if (!sub) return
     try {
-      // Fetch panel data + cross-panel state needed for conflict warnings
       if (p === 'access') {
         const [rulesRes, baRes] = await Promise.all([
           rules === null ? getAccessRules(sub) : Promise.resolve(rules),
@@ -200,6 +191,7 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
         api_key: editApiKey || null,
         upstream_basic_auth: editUpstreamBasicAuth || null,
         forward_host: editForwardHost,
+        response_timeout: editResponseTimeout ? parseInt(editResponseTimeout, 10) : null,
       })
       setPanel(null)
       onRefresh()
@@ -209,8 +201,6 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
       setEditSaving(false)
     }
   }
-
-  // --- Access rules handlers ---
 
   async function handleAddRule() {
     if (!sub || !newEmail) return
@@ -233,9 +223,6 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
     })
   }
 
-  // --- PIN handlers ---
-
-  // PIN validation
   const pinValid = /^\d{4,8}$/.test(newPin)
   const pinMatch = newPin === confirmPin
   const pinTouched = newPin.length > 0
@@ -263,9 +250,6 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
     })
   }
 
-  // --- Basic auth handlers ---
-
-  // Basic auth validation
   const baUsernameValid = baUsername.length > 0 && !baUsername.includes(':')
   const baPasswordValid = baPassword.length >= 8
   const baPasswordMatch = baPassword === baConfirmPassword
@@ -313,7 +297,6 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
 
   const isSso = tunnel.auth_mode === 'sso'
 
-  // Conflict detection helpers
   const pinHasBasicAuthConflict = basicAuth?.has_basic_auth === true
   const accessHasBasicAuthConflict = basicAuth?.has_basic_auth === true
   const baConflicts: string[] = []
@@ -323,10 +306,9 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
 
   return (
     <div style={card}>
-      {/* Confirmation dialog overlay */}
       {confirmAction && (
         <div style={confirmBox}>
-          <span style={{ fontSize: 13, color: '#e0e0e0' }}>{confirmAction.message}</span>
+          <span style={{ fontSize: 13, color: 'var(--text)' }}>{confirmAction.message}</span>
           <div style={row}>
             <button style={btn('danger')} onClick={confirmAction.onConfirm}>Confirm</button>
             <button style={btn('ghost')} onClick={() => setConfirmAction(null)}>Cancel</button>
@@ -350,35 +332,35 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
             )}
             {tunnel.name || tunnel.label}
             {tunnel.name && (
-              <span style={{ color: '#6b7280', fontWeight: 400, marginLeft: 8, fontSize: 12 }}>
+              <span style={{ color: 'var(--text-xdim)', fontWeight: 400, marginLeft: 8, fontSize: 12 }}>
                 {tunnel.label}
               </span>
             )}
-            <span style={{ color: '#6b7280', fontWeight: 400, marginLeft: 8, fontSize: 13 }}>
+            <span style={{ color: 'var(--text-xdim)', fontWeight: 400, marginLeft: 8, fontSize: 13 }}>
               {isSso ? '🔒 SSO' : '🌐 Open'}
             </span>
           </span>
-          <span style={{ color: '#9ca3af', fontSize: 12 }}>{tunnel.service_url}</span>
+          <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>{tunnel.service_url}</span>
           {tunnel.state === 'CONNECTING' && (
-            <span style={{ color: '#facc15', fontSize: 12 }}>
+            <span style={{ color: 'var(--yellow)', fontSize: 12 }}>
               {tunnel.error
                 ? `Connection issue: ${tunnel.error}`
                 : 'Process running — connecting to relay…'}
             </span>
           )}
           {tunnel.state === 'FAILED' && (
-            <span style={{ color: '#f87171', fontSize: 12 }}>
+            <span style={{ color: 'var(--red)', fontSize: 12 }}>
               Process exited unexpectedly.{tunnel.error ? ` Last log: ${tunnel.error}` : ' Check Logs for details.'}
             </span>
           )}
           {tunnel.subdomain && (
-            <span style={{ color: '#6b7280', fontSize: 12, fontFamily: 'monospace' }}>
+            <span style={{ color: 'var(--text-xdim)', fontSize: 12, fontFamily: 'var(--font-mono)' }}>
               {tunnel.subdomain}.hle.world
             </span>
           )}
           {tunnel.public_url && (
             <a href={tunnel.public_url} target="_blank" rel="noreferrer"
-              style={{ color: '#60a5fa', fontSize: 13 }}>
+              style={{ color: 'var(--mint)', fontSize: 13 }}>
               {tunnel.public_url}
             </a>
           )}
@@ -394,61 +376,47 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
               {tunnel.state === 'FAILED' ? 'Retry' : 'Start'}
             </button>
         }
-        <button style={btn(panel === 'edit' ? 'active' : 'ghost')} onClick={() => togglePanel('edit')}>
-          Edit
-        </button>
+        <button style={btn(panel === 'edit' ? 'active' : 'ghost')} onClick={() => togglePanel('edit')}>Edit</button>
         {sub && isSso && (
-          <button style={btn(panel === 'access' ? 'active' : 'ghost')} onClick={() => togglePanel('access')}>
-            Access Rules
-          </button>
+          <button style={btn(panel === 'access' ? 'active' : 'ghost')} onClick={() => togglePanel('access')}>Access Rules</button>
         )}
         {sub && isSso && (
-          <button style={btn(panel === 'pin' ? 'active' : 'ghost')} onClick={() => togglePanel('pin')}>
-            PIN
-          </button>
+          <button style={btn(panel === 'pin' ? 'active' : 'ghost')} onClick={() => togglePanel('pin')}>PIN</button>
         )}
         {sub && (
-          <button style={btn(panel === 'basic-auth' ? 'active' : 'ghost')} onClick={() => togglePanel('basic-auth')}>
-            Basic Auth
-          </button>
+          <button style={btn(panel === 'basic-auth' ? 'active' : 'ghost')} onClick={() => togglePanel('basic-auth')}>Basic Auth</button>
         )}
         {sub && (
-          <button style={btn(panel === 'share' ? 'active' : 'ghost')} onClick={() => togglePanel('share')}>
-            Share
-          </button>
+          <button style={btn(panel === 'share' ? 'active' : 'ghost')} onClick={() => togglePanel('share')}>Share</button>
         )}
-        <button style={btn(panel === 'logs' ? 'active' : 'ghost')} onClick={() => togglePanel('logs')}>
-          Logs
-        </button>
+        <button style={btn(panel === 'logs' ? 'active' : 'ghost')} onClick={() => togglePanel('logs')}>Logs</button>
         <button style={{ ...btn('danger'), marginLeft: 'auto' }}
-          onClick={() => removeTunnel(tunnel.id).then(onRefresh)}>
-          Remove
-        </button>
+          onClick={() => removeTunnel(tunnel.id).then(onRefresh)}>Remove</button>
       </div>
 
-      {error && <p style={{ color: '#f87171', fontSize: 13, margin: 0 }}>{error}</p>}
+      {error && <p style={{ color: 'var(--red)', fontSize: 13, margin: 0 }}>{error}</p>}
 
-      {/* Edit panel */}
+      {/* Edit panel — NOW INCLUDES response_timeout (FUNCTIONAL FIX) */}
       {panel === 'edit' && (
         <div style={section}>
           <span style={sectionTitle}>Edit Tunnel Settings</span>
-          <span style={{ fontSize: 12, color: '#6b7280' }}>Saving will restart the tunnel process.</span>
+          <span style={{ fontSize: 12, color: 'var(--text-xdim)' }}>Saving will restart the tunnel process.</span>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: 12, color: '#9ca3af' }}>Service URL</label>
+              <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>Service URL</label>
               <input style={inputSm} value={editServiceUrl} onChange={e => setEditServiceUrl(e.target.value)} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: 12, color: '#9ca3af' }}>Label (subdomain prefix)</label>
+              <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>Label (subdomain prefix)</label>
               <input style={inputSm} value={editLabel} onChange={e => setEditLabel(e.target.value.toLowerCase().replace(/[_ .]+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-{2,}/g, '-'))} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: 12, color: '#9ca3af' }}>Display name (optional)</label>
+              <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>Display name (optional)</label>
               <input style={inputSm} value={editName} onChange={e => setEditName(e.target.value)} placeholder="e.g. Home Assistant" />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: 12, color: '#9ca3af' }}>Auth mode</label>
+              <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>Auth mode</label>
               <select style={inputSm} value={editAuthMode} onChange={e => setEditAuthMode(e.target.value as 'sso' | 'none')}>
                 <option value="sso">SSO (recommended)</option>
                 <option value="none">Open (no auth)</option>
@@ -457,49 +425,55 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 12, color: '#9ca3af' }}>
+            <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>
               API key override{' '}
-              <span style={{ color: '#6b7280', fontWeight: 400 }}>(leave blank to use global key; set to clear override)</span>
+              <span style={{ color: 'var(--text-xdim)', fontWeight: 400 }}>(leave blank to use global key; set to clear override)</span>
             </label>
-            <input style={{ ...inputSm, fontFamily: 'monospace' }} value={editApiKey}
+            <input style={{ ...inputSm, fontFamily: 'var(--font-mono)' }} value={editApiKey}
               onChange={e => setEditApiKey(e.target.value)}
               placeholder="hle_... (optional)" type="password" />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 12, color: '#9ca3af' }}>
+            <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>
               Upstream basic auth{' '}
-              <span style={{ color: '#6b7280', fontWeight: 400 }}>(user:pass — injected into requests forwarded to the local service)</span>
+              <span style={{ color: 'var(--text-xdim)', fontWeight: 400 }}>(user:pass — injected into requests forwarded to the local service)</span>
             </label>
-            <input style={{ ...inputSm, fontFamily: 'monospace' }} value={editUpstreamBasicAuth}
+            <input style={{ ...inputSm, fontFamily: 'var(--font-mono)' }} value={editUpstreamBasicAuth}
               onChange={e => setEditUpstreamBasicAuth(e.target.value)}
               placeholder="username:password (optional)" type="password" />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+                Response timeout{' '}
+                <span style={{ color: 'var(--text-xdim)', fontWeight: 400 }}>(seconds)</span>
+              </label>
+              <input style={inputSm} value={editResponseTimeout}
+                onChange={e => setEditResponseTimeout(e.target.value.replace(/\D/g, ''))}
+                placeholder="30 (default)" type="text" inputMode="numeric" />
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 13 }}>
               <input type="checkbox" checked={editVerifySsl} onChange={e => setEditVerifySsl(e.target.checked)} />
               Verify SSL
-              <span
-                title="Enable only if the service has a valid CA-signed certificate. Self-signed certs will fail."
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#2d3139', color: '#9ca3af', fontSize: 10, fontWeight: 700, cursor: 'help' }}
-              >?</span>
+              <span title="Enable only if the service has a valid CA-signed certificate. Self-signed certs will fail."
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: 'var(--surface)', color: 'var(--text-dim)', fontSize: 10, fontWeight: 700, cursor: 'help' }}>?</span>
             </label>
             <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 13 }}>
               <input type="checkbox" checked={editWebsocket} onChange={e => setEditWebsocket(e.target.checked)} />
               Enable WebSocket
-              <span
-                title="Required for Home Assistant, VS Code Server, and other services that use WebSockets."
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#2d3139', color: '#9ca3af', fontSize: 10, fontWeight: 700, cursor: 'help' }}
-              >?</span>
+              <span title="Required for Home Assistant, VS Code Server, and other services that use WebSockets."
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: 'var(--surface)', color: 'var(--text-dim)', fontSize: 10, fontWeight: 700, cursor: 'help' }}>?</span>
             </label>
             <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 13 }}>
               <input type="checkbox" checked={editForwardHost} onChange={e => setEditForwardHost(e.target.checked)} />
               Forward Host header
-              <span
-                title="Forward the browser's Host header to the local service. Enable for services that validate the Host header (e.g. Home Assistant with external_url)."
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#2d3139', color: '#9ca3af', fontSize: 10, fontWeight: 700, cursor: 'help' }}
-              >?</span>
+              <span title="Forward the browser's Host header to the local service. Enable for services that validate the Host header (e.g. Home Assistant with external_url)."
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: 'var(--surface)', color: 'var(--text-dim)', fontSize: 10, fontWeight: 700, cursor: 'help' }}>?</span>
             </label>
           </div>
 
@@ -517,9 +491,8 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
         <div style={section}>
           <span style={sectionTitle}>SSO Allow-list</span>
           {!sub
-            ? <span style={{ color: '#6b7280', fontSize: 13 }}>Tunnel not yet connected — subdomain unknown.</span>
+            ? <span style={{ color: 'var(--text-xdim)', fontSize: 13 }}>Tunnel not yet connected — subdomain unknown.</span>
             : <>
-              {/* Conflict warning: Basic Auth active */}
               {accessHasBasicAuthConflict && !conflictAcked && (
                 <div style={warningBox}>
                   <span>Basic Auth is active — email rules won't be checked until Basic Auth is removed.</span>
@@ -530,13 +503,13 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
               )}
               {(!accessHasBasicAuthConflict || conflictAcked) && <>
                 {(rules ?? []).length === 0 && (
-                  <span style={{ color: '#6b7280', fontSize: 13 }}>No rules — all SSO users are allowed.</span>
+                  <span style={{ color: 'var(--text-xdim)', fontSize: 13 }}>No rules — all SSO users are allowed.</span>
                 )}
                 {(rules ?? []).map(r => (
                   <div key={r.id} style={{ ...row, justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 13 }}>
                       {r.allowed_email}
-                      <span style={{ color: '#6b7280', marginLeft: 6 }}>via {r.provider}</span>
+                      <span style={{ color: 'var(--text-xdim)', marginLeft: 6 }}>via {r.provider}</span>
                     </span>
                     <button style={{ ...btn('danger'), padding: '2px 8px' }} onClick={() => handleDeleteRule(r.id)}>✕</button>
                   </div>
@@ -560,13 +533,11 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
         <div style={section}>
           <span style={sectionTitle}>PIN Protection</span>
           {!sub
-            ? <span style={{ color: '#6b7280', fontSize: 13 }}>Tunnel not yet connected — subdomain unknown.</span>
+            ? <span style={{ color: 'var(--text-xdim)', fontSize: 13 }}>Tunnel not yet connected — subdomain unknown.</span>
             : <>
-              <span style={{ fontSize: 13, color: hasPin ? '#4ade80' : '#6b7280' }}>
+              <span style={{ fontSize: 13, color: hasPin ? 'var(--green)' : 'var(--text-xdim)' }}>
                 {hasPin ? '🔐 PIN is set' : 'No PIN — visitors only need SSO login'}
               </span>
-
-              {/* Conflict warning: Basic Auth active */}
               {pinHasBasicAuthConflict && !hasPin && !conflictAcked && (
                 <div style={warningBox}>
                   <span>Basic Auth is active — this PIN won't be checked until Basic Auth is removed.</span>
@@ -575,7 +546,6 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
                   </div>
                 </div>
               )}
-
               {(!pinHasBasicAuthConflict || hasPin || conflictAcked) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={row}>
@@ -584,7 +554,7 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
                         placeholder="4-8 digits" type="password" maxLength={8}
                         style={pinTouched && !pinValid ? inputErr : { ...inputSm, width: 120 }} />
                       {pinTouched && !pinValid && (
-                        <span style={{ fontSize: 11, color: '#ef4444' }}>Must be 4-8 digits</span>
+                        <span style={{ fontSize: 11, color: 'var(--red)' }}>Must be 4-8 digits</span>
                       )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -592,7 +562,7 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
                         placeholder="Confirm PIN" type="password" maxLength={8}
                         style={confirmPinTouched && !pinMatch ? inputErr : { ...inputSm, width: 120 }} />
                       {confirmPinTouched && !pinMatch && (
-                        <span style={{ fontSize: 11, color: '#ef4444' }}>PINs don't match</span>
+                        <span style={{ fontSize: 11, color: 'var(--red)' }}>PINs don't match</span>
                       )}
                     </div>
                     <button style={btn('primary')} onClick={handleSetPin} disabled={!pinValid || !pinMatch}>
@@ -611,19 +581,17 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
       {panel === 'basic-auth' && (
         <div style={section}>
           <span style={sectionTitle}>Basic Auth</span>
-          <span style={{ fontSize: 12, color: '#6b7280' }}>
+          <span style={{ fontSize: 12, color: 'var(--text-xdim)' }}>
             Require HTTP Basic Auth credentials to access this tunnel URL.
           </span>
           {!sub
-            ? <span style={{ color: '#6b7280', fontSize: 13 }}>Tunnel not yet connected — subdomain unknown.</span>
+            ? <span style={{ color: 'var(--text-xdim)', fontSize: 13 }}>Tunnel not yet connected — subdomain unknown.</span>
             : <>
-              <span style={{ fontSize: 13, color: basicAuth?.has_basic_auth ? '#4ade80' : '#6b7280' }}>
+              <span style={{ fontSize: 13, color: basicAuth?.has_basic_auth ? 'var(--green)' : 'var(--text-xdim)' }}>
                 {basicAuth?.has_basic_auth
                   ? `Enabled (user: ${basicAuth.username})`
                   : 'Not configured'}
               </span>
-
-              {/* Conflict warning: PIN or email rules exist */}
               {baHasConflict && !conflictAcked && (
                 <div style={warningBox}>
                   <span>This tunnel has {baConflicts.join(' and ')} — enabling Basic Auth will bypass them.</span>
@@ -632,7 +600,6 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
                   </div>
                 </div>
               )}
-
               {(!baHasConflict || conflictAcked || basicAuth?.has_basic_auth) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -641,7 +608,7 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
                         placeholder="username" autoComplete="off"
                         style={baUsernameTouched && !baUsernameValid ? inputErr : { ...inputSm }} />
                       {baUsernameTouched && !baUsernameValid && (
-                        <span style={{ fontSize: 11, color: '#ef4444' }}>
+                        <span style={{ fontSize: 11, color: 'var(--red)' }}>
                           {baUsername.includes(':') ? 'Must not contain ":"' : 'Required'}
                         </span>
                       )}
@@ -652,7 +619,7 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
                         placeholder="password (min 8 chars)" type="password" autoComplete="new-password"
                         style={baPasswordTouched && !baPasswordValid ? inputErr : { ...inputSm }} />
                       {baPasswordTouched && !baPasswordValid && (
-                        <span style={{ fontSize: 11, color: '#ef4444' }}>Minimum 8 characters</span>
+                        <span style={{ fontSize: 11, color: 'var(--red)' }}>Minimum 8 characters</span>
                       )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -660,7 +627,7 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
                         placeholder="confirm password" type="password" autoComplete="new-password"
                         style={baConfirmTouched && !baPasswordMatch ? inputErr : { ...inputSm }} />
                       {baConfirmTouched && !baPasswordMatch && (
-                        <span style={{ fontSize: 11, color: '#ef4444' }}>Passwords don't match</span>
+                        <span style={{ fontSize: 11, color: 'var(--red)' }}>Passwords don't match</span>
                       )}
                     </div>
                   </div>
@@ -685,12 +652,12 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
         <div style={section}>
           <span style={sectionTitle}>Share Links</span>
           {!sub
-            ? <span style={{ color: '#6b7280', fontSize: 13 }}>Tunnel not yet connected — subdomain unknown.</span>
+            ? <span style={{ color: 'var(--text-xdim)', fontSize: 13 }}>Tunnel not yet connected — subdomain unknown.</span>
             : <>
               {newShareUrl && (
-                <div style={{ background: '#052e16', border: '1px solid #166534', borderRadius: 6, padding: '8px 12px' }}>
-                  <span style={{ fontSize: 12, color: '#4ade80', display: 'block', marginBottom: 4 }}>Link created:</span>
-                  <a href={newShareUrl} target="_blank" rel="noreferrer" style={{ color: '#60a5fa', fontSize: 13, wordBreak: 'break-all' }}>{newShareUrl}</a>
+                <div style={{ background: 'var(--green-tint-bg)', border: '1px solid var(--green-tint-border)', borderRadius: 6, padding: '8px 12px' }}>
+                  <span style={{ fontSize: 12, color: 'var(--green)', display: 'block', marginBottom: 4 }}>Link created:</span>
+                  <a href={newShareUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--mint)', fontSize: 13, wordBreak: 'break-all' }}>{newShareUrl}</a>
                 </div>
               )}
               <div style={row}>
@@ -702,14 +669,14 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
                 <button style={btn('primary')} onClick={handleCreateShare}>Create</button>
               </div>
               {(shareLinks ?? []).length === 0
-                ? <span style={{ color: '#6b7280', fontSize: 13 }}>No active share links.</span>
+                ? <span style={{ color: 'var(--text-xdim)', fontSize: 13 }}>No active share links.</span>
                 : (shareLinks ?? []).map(l => (
                   <div key={l.id} style={{ ...row, justifyContent: 'space-between', fontSize: 13 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      <span style={{ color: l.is_active ? '#e0e0e0' : '#6b7280' }}>
+                      <span style={{ color: l.is_active ? 'var(--text)' : 'var(--text-xdim)' }}>
                         {l.label || `Link #${l.id}`}
-                        <span style={{ color: '#6b7280', marginLeft: 8 }}>expires {new Date(l.expires_at).toLocaleDateString()}</span>
-                        {l.max_uses && <span style={{ color: '#6b7280', marginLeft: 8 }}>{l.use_count}/{l.max_uses} uses</span>}
+                        <span style={{ color: 'var(--text-xdim)', marginLeft: 8 }}>expires {new Date(l.expires_at).toLocaleDateString()}</span>
+                        {l.max_uses && <span style={{ color: 'var(--text-xdim)', marginLeft: 8 }}>{l.use_count}/{l.max_uses} uses</span>}
                       </span>
                     </div>
                     <button style={{ ...btn('danger'), padding: '2px 8px' }} onClick={() => handleDeleteShare(l.id)}>✕</button>
@@ -725,7 +692,7 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
       {panel === 'logs' && (
         <div style={section}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={sectionTitle}>Tunnel Logs <span style={{ fontWeight: 400, fontSize: 11, color: '#6b7280' }}>(auto-refreshing)</span></span>
+            <span style={sectionTitle}>Tunnel Logs <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--text-xdim)' }}>(auto-refreshing)</span></span>
             <div style={{ display: 'flex', gap: 6 }}>
               <a
                 href={`./api/tunnels/${tunnel.id}/logs/download`}
@@ -741,9 +708,10 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
             </div>
           </div>
           <pre ref={logsRef} style={{
-            background: '#0d1117', borderRadius: 6, padding: '10px 12px',
-            fontSize: 11, color: '#9ca3af', overflowX: 'auto', maxHeight: 280,
+            background: 'var(--surface)', borderRadius: 6, padding: '10px 12px',
+            fontSize: 11, color: 'var(--text-dim)', overflowX: 'auto', maxHeight: 280,
             overflowY: 'auto', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+            fontFamily: 'var(--font-mono)',
           }}>
             {(logs ?? []).length === 0
               ? 'No log output yet.'

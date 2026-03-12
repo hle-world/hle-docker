@@ -1,0 +1,71 @@
+/* HLE Design System — Addon Frontend */
+
+:root {
+  /* Background hierarchy */
+  --bg: #161820;
+  --bg-raised: #1e2130;
+  --surface: #262a3a;
+
+  /* Borders */
+  --border: #383e52;
+  --border-hi: #4a5168;
+
+  /* Text */
+  --text: #e2e5f0;
+  --text-dim: #8e95b0;
+  --text-xdim: #606880;
+
+  /* Primary accent: Mint */
+  --mint: #00e89a;
+  --mint-dim: #00c080;
+  --mint-glow: rgba(0, 232, 154, 0.12);
+  --mint-tint-bg: rgba(0, 232, 154, 0.08);
+  --mint-tint-border: rgba(0, 232, 154, 0.22);
+
+  /* Semantic colors */
+  --red: #ff4d6a;
+  --yellow: #f0c050;
+  --orange: #ff6b2c;
+  --green: #4ade80;
+
+  /* Semantic tints */
+  --yellow-tint-bg: rgba(240, 192, 80, 0.08);
+  --yellow-tint-border: rgba(240, 192, 80, 0.25);
+  --red-tint-bg: rgba(255, 77, 106, 0.08);
+  --red-tint-border: rgba(255, 77, 106, 0.25);
+  --green-tint-bg: rgba(74, 222, 128, 0.08);
+  --green-tint-border: rgba(74, 222, 128, 0.25);
+
+  /* Typography */
+  --font-display: 'Syne', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Misc */
+  --radius: 10px;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.30);
+  --overlay: rgba(0, 0, 0, 0.50);
+}
+
+/* Reset */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Pulse animation for status badge */
+@keyframes hle-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.75); }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-hi); }

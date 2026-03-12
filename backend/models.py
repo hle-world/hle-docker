@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class TunnelConfig(BaseModel):
@@ -20,6 +20,7 @@ class TunnelConfig(BaseModel):
         None  # "user:pass" injected into upstream requests
     )
     forward_host: bool = False  # forward browser's Host header to local service
+    response_timeout: Optional[int] = None  # server-side response timeout in seconds
     subdomain: Optional[str] = None  # populated once tunnel connects to relay
     stopped: bool = False  # persisted: user explicitly stopped this tunnel
 
@@ -31,7 +32,16 @@ class TunnelStatus(TunnelConfig):
     pid: Optional[int] = None
 
 
-class AddTunnelRequest(BaseModel):
+class _TimeoutValidator(BaseModel):
+    @field_validator("response_timeout")
+    @classmethod
+    def validate_response_timeout(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and not (1 <= v <= 1200):
+            raise ValueError("response_timeout must be between 1 and 1200 seconds")
+        return v
+
+
+class AddTunnelRequest(_TimeoutValidator):
     service_url: str
     label: str
     name: Optional[str] = None
@@ -41,9 +51,10 @@ class AddTunnelRequest(BaseModel):
     api_key: Optional[str] = None
     upstream_basic_auth: Optional[str] = None
     forward_host: bool = False
+    response_timeout: Optional[int] = None
 
 
-class UpdateTunnelRequest(BaseModel):
+class UpdateTunnelRequest(_TimeoutValidator):
     service_url: Optional[str] = None
     label: Optional[str] = None
     name: Optional[str] = None
@@ -53,6 +64,7 @@ class UpdateTunnelRequest(BaseModel):
     api_key: Optional[str] = None  # set to "" to clear the override
     upstream_basic_auth: Optional[str] = None  # set to "" to clear
     forward_host: Optional[bool] = None
+    response_timeout: Optional[int] = None
 
 
 class UpdateConfigRequest(BaseModel):

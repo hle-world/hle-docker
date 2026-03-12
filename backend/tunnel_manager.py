@@ -75,6 +75,8 @@ async def _spawn(cfg: TunnelConfig) -> asyncio.subprocess.Process:
         cmd.extend(["--upstream-basic-auth", cfg.upstream_basic_auth])
     if cfg.forward_host:
         cmd.append("--forward-host")
+    if cfg.response_timeout is not None:
+        cmd.extend(["--timeout", str(cfg.response_timeout)])
     env = {**os.environ}
     if cfg.api_key:
         env["HLE_API_KEY"] = cfg.api_key  # per-tunnel override; not visible in `ps`
