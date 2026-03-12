@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { Logo } from './components/Logo'
 import type { TunnelStatus } from './api/client'
 import {
   getConfig, updateConfig,
@@ -8,27 +9,20 @@ import { TunnelCard } from './components/TunnelCard'
 import { AddTunnelModal } from './components/AddTunnelModal'
 
 // ---------------------------------------------------------------------------
-// Shared styles
+// Shared inline style helpers (reference CSS variables from index.css)
 // ---------------------------------------------------------------------------
-const colors = {
-  bg: '#111318', surface: '#1e2128', border: '#2d3139',
-  text: '#e0e0e0', muted: '#9ca3af', faint: '#6b7280',
-  blue: '#3b82f6', blueDark: '#1d4ed8',
-  green: '#4ade80', yellow: '#facc15', red: '#f87171',
-  amber: '#fbbf24',
-}
-
 const inputStyle: React.CSSProperties = {
-  padding: '8px 12px', borderRadius: 7, border: `1px solid ${colors.border}`,
-  background: colors.surface, color: colors.text, fontSize: 14, width: '100%',
-  boxSizing: 'border-box',
+  padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)',
+  background: 'var(--surface)', color: 'var(--text)', fontSize: 14, width: '100%',
+  boxSizing: 'border-box', fontFamily: 'inherit',
 }
 const btnPrimary: React.CSSProperties = {
-  padding: '8px 18px', borderRadius: 7, border: 'none', cursor: 'pointer',
-  background: colors.blue, color: '#fff', fontSize: 13, fontWeight: 600,
+  padding: '8px 18px', borderRadius: 6, border: 'none', cursor: 'pointer',
+  background: 'var(--mint)', color: 'var(--bg)', fontSize: 13, fontWeight: 600,
+  fontFamily: 'inherit',
 }
 const btnDisabled: React.CSSProperties = {
-  ...btnPrimary, background: colors.surface, color: colors.faint, cursor: 'not-allowed',
+  ...btnPrimary, background: 'var(--surface)', color: 'var(--text-xdim)', cursor: 'not-allowed',
 }
 
 // ---------------------------------------------------------------------------
@@ -44,18 +38,19 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <div style={{ border: `1px solid ${colors.border}`, borderRadius: 10, overflow: 'hidden' }}>
+    <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
       <button
         onClick={onToggle}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 20px', background: colors.surface, border: 'none', cursor: 'pointer',
-          color: colors.text, fontSize: 15, fontWeight: 700, textAlign: 'left',
+          padding: '14px 20px', background: 'var(--surface)', border: 'none', cursor: 'pointer',
+          color: 'var(--text)', fontSize: 15, fontWeight: 700, textAlign: 'left',
+          fontFamily: 'var(--font-display)',
         }}
       >
         <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{
-            fontSize: 11, color: colors.muted, transform: open ? 'rotate(90deg)' : 'none',
+            fontSize: 11, color: 'var(--text-dim)', transform: open ? 'rotate(90deg)' : 'none',
             display: 'inline-block', transition: 'transform 0.15s',
           }}>▶</span>
           {title}
@@ -107,10 +102,10 @@ function SettingsContent({
     <>
       {/* API key */}
       <div style={{ marginTop: 4 }}>
-        <div style={{ fontSize: 13, color: colors.muted, fontWeight: 500, marginBottom: 6 }}>API Key</div>
+        <div style={{ fontSize: 13, color: 'var(--text-dim)', fontWeight: 500, marginBottom: 6 }}>API Key</div>
         {masked && (
-          <p style={{ fontSize: 13, color: colors.faint, margin: '0 0 8px' }}>
-            Current: <code style={{ color: colors.muted }}>{masked}</code>
+          <p style={{ fontSize: 13, color: 'var(--text-xdim)', margin: '0 0 8px' }}>
+            Current: <code style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>{masked}</code>
           </p>
         )}
         <div style={{ display: 'flex', gap: 8 }}>
@@ -130,15 +125,15 @@ function SettingsContent({
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
-        {error && <p style={{ color: colors.red, fontSize: 13, margin: '8px 0 0' }}>{error}</p>}
-        {saved && <p style={{ color: colors.green, fontSize: 13, margin: '8px 0 0' }}>✓ Saved — tunnels will start automatically.</p>}
-        <p style={{ fontSize: 12, color: colors.faint, margin: '8px 0 0' }}>
+        {error && <p style={{ color: 'var(--red)', fontSize: 13, margin: '8px 0 0' }}>{error}</p>}
+        {saved && <p style={{ color: 'var(--green)', fontSize: 13, margin: '8px 0 0' }}>✓ Saved — tunnels will start automatically.</p>}
+        <p style={{ fontSize: 12, color: 'var(--text-xdim)', margin: '8px 0 0' }}>
           New user?{' '}
-          <a href="https://hle.world/register" target="_blank" rel="noreferrer" style={{ color: colors.blue }}>
+          <a href="https://hle.world/register" target="_blank" rel="noreferrer" style={{ color: 'var(--mint)' }}>
             Create a free account
           </a>
           {' '}· API key at{' '}
-          <a href="https://hle.world/dashboard" target="_blank" rel="noreferrer" style={{ color: colors.blue }}>
+          <a href="https://hle.world/dashboard" target="_blank" rel="noreferrer" style={{ color: 'var(--mint)' }}>
             hle.world/dashboard
           </a>
         </p>
@@ -155,25 +150,25 @@ function DocsContent() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 4 }}>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ fontWeight: 600, fontSize: 13, color: colors.text }}>SSO vs Open tunnels</div>
-        <p style={{ fontSize: 13, color: colors.muted, margin: 0, lineHeight: 1.6 }}>
-          <strong style={{ color: colors.text }}>SSO</strong> — visitors must log in via Google or GitHub
+        <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>SSO vs Open tunnels</div>
+        <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: 0, lineHeight: 1.6 }}>
+          <strong style={{ color: 'var(--text)' }}>SSO</strong> — visitors must log in via Google or GitHub
           before accessing your service. You can restrict access to specific email addresses using
           Access Rules.
         </p>
-        <p style={{ fontSize: 13, color: colors.muted, margin: 0, lineHeight: 1.6 }}>
-          <strong style={{ color: colors.text }}>Open</strong> — no authentication. The service is
+        <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: 0, lineHeight: 1.6 }}>
+          <strong style={{ color: 'var(--text)' }}>Open</strong> — no authentication. The service is
           publicly accessible via the tunnel URL. Use this for services with their own auth.
         </p>
       </div>
 
-      <div style={{ borderTop: `1px solid ${colors.border}` }} />
+      <div style={{ borderTop: '1px solid var(--border)' }} />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ fontWeight: 600, fontSize: 13, color: colors.text }}>Self-signed certificates</div>
-        <p style={{ fontSize: 13, color: colors.muted, margin: 0, lineHeight: 1.6 }}>
+        <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>Self-signed certificates</div>
+        <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: 0, lineHeight: 1.6 }}>
           If your local service uses HTTPS with a self-signed certificate (e.g. a NAS or router),
-          enable <strong style={{ color: colors.text }}>Skip SSL verification</strong> when adding the tunnel.
+          enable <strong style={{ color: 'var(--text)' }}>Skip SSL verification</strong> when adding the tunnel.
           The tunnel URL itself is always secured with a valid certificate.
         </p>
       </div>
@@ -224,15 +219,20 @@ export default function App() {
   const noKey = apiKeySet === false
 
   return (
-    <div style={{ minHeight: '100vh', background: colors.bg, color: colors.text, fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ minHeight: '100vh' }}>
       {/* Header */}
       <header style={{
-        padding: '16px 24px', background: '#161820',
-        borderBottom: `1px solid ${colors.border}`,
-        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '16px 24px', background: 'var(--bg-raised)',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', gap: 12,
       }}>
-        <span style={{ fontSize: 20 }}>🌐</span>
-        <span style={{ fontWeight: 700, fontSize: 17, letterSpacing: '-0.3px' }}>
+        <span style={{ color: 'var(--mint)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Logo size={26} />
+          <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 18, letterSpacing: '-0.3px' }}>
+            HL<span style={{ color: '#ffd866' }}>E</span>
+          </span>
+        </span>
+        <span style={{ color: 'var(--text-dim)', fontSize: 14 }}>
           Home Lab Everywhere
         </span>
       </header>
@@ -246,7 +246,8 @@ export default function App() {
           onToggle={() => setSettingsOpen(o => !o)}
           badge={noKey ? (
             <span style={{
-              fontSize: 11, background: '#92400e', color: colors.amber,
+              fontSize: 11, background: 'var(--yellow-tint-bg)', color: 'var(--yellow)',
+              border: '1px solid var(--yellow-tint-border)',
               borderRadius: 4, padding: '1px 7px', fontWeight: 600,
             }}>API key required</span>
           ) : undefined}
@@ -266,14 +267,14 @@ export default function App() {
           onToggle={() => setTunnelsOpen(o => !o)}
           badge={tunnels.length > 0 ? (
             <span style={{
-              fontSize: 11, background: colors.surface, color: colors.faint,
-              border: `1px solid ${colors.border}`, borderRadius: 10, padding: '1px 8px',
+              fontSize: 11, background: 'var(--surface)', color: 'var(--text-xdim)',
+              border: '1px solid var(--border)', borderRadius: 10, padding: '1px 8px',
             }}>{tunnels.length}</span>
           ) : undefined}
         >
           {/* Add tunnel button + no-key warning */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
-            <span style={{ fontSize: 13, color: colors.faint }}>
+            <span style={{ fontSize: 13, color: 'var(--text-xdim)' }}>
               {tunnels.length === 0 ? 'No tunnels yet.' : ''}
             </span>
             <button
@@ -287,13 +288,13 @@ export default function App() {
 
           {noKey && (
             <div style={{
-              background: '#422006', border: `1px solid #92400e`,
-              borderRadius: 8, padding: '10px 14px', fontSize: 13, color: colors.amber, lineHeight: 1.6,
+              background: 'var(--yellow-tint-bg)', border: '1px solid var(--yellow-tint-border)',
+              borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--yellow)', lineHeight: 1.6,
             }}>
               No API key configured.{' '}
               <button
                 onClick={() => setSettingsOpen(true)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.amber, fontWeight: 700, textDecoration: 'underline', fontSize: 13, padding: 0 }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--yellow)', fontWeight: 700, textDecoration: 'underline', fontSize: 13, padding: 0, fontFamily: 'inherit' }}
               >
                 Open Settings
               </button>
@@ -301,14 +302,14 @@ export default function App() {
             </div>
           )}
 
-          {loadError && <p style={{ color: colors.red, fontSize: 13 }}>{loadError}</p>}
+          {loadError && <p style={{ color: 'var(--red)', fontSize: 13 }}>{loadError}</p>}
 
           {tunnels.map(t => (
             <TunnelCard key={t.id} tunnel={t} onRefresh={loadTunnels} />
           ))}
 
           {/* Documentation sub-section */}
-          <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: 12 }}>
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
             <Section
               title="Documentation"
               open={docsOpen}

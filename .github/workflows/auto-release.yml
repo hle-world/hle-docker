@@ -74,3 +74,18 @@ jobs:
           gh release create "v${VERSION}" \
             --title "v${VERSION}" \
             --notes "$NOTES"
+
+      - name: Notify hle-webapp of changes
+        env:
+          GH_TOKEN: ${{ secrets.HLE_PAT }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh api repos/hle-world/hle-webapp/dispatches \
+            -f event_type=hle-docker-changes \
+            -f "client_payload[version]=${VERSION}" \
+            -f "client_payload[pr_title]=${PR_TITLE}" \
+            -f "client_payload[pr_number]=${PR_NUMBER}" \
+            -f "client_payload[pr_url]=${PR_URL}"
