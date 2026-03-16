@@ -233,7 +233,7 @@ export default function App() {
           </span>
         </span>
         <span style={{ color: 'var(--text-dim)', fontSize: 14 }}>
-          Home Lab Everywhere
+          HomeLab Everywhere
         </span>
       </header>
 

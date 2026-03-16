@@ -33,7 +33,7 @@ class TunnelStatus(TunnelConfig):
 
 
 class _TimeoutValidator(BaseModel):
-    @field_validator("response_timeout")
+    @field_validator("response_timeout", check_fields=False)
     @classmethod
     def validate_response_timeout(cls, v: Optional[int]) -> Optional[int]:
         if v is not None and not (1 <= v <= 1200):

@@ -1,6 +1,6 @@
 # HLE Docker
 
-Run [Home Lab Everywhere](https://hle.world) tunnels on any Docker host — Synology, Unraid, bare metal, and more.
+Run [HomeLab Everywhere](https://hle.world) tunnels on any Docker host — Synology, Unraid, bare metal, and more.
 
 Two variants available:
 
