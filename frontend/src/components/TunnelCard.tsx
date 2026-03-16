@@ -52,6 +52,7 @@ type Panel = 'access' | 'pin' | 'basic-auth' | 'share' | 'logs' | 'edit' | null
 export function TunnelCard({ tunnel, onRefresh }: Props) {
   const [panel, setPanel] = useState<Panel>(null)
   const [error, setError] = useState('')
+  const [urlCopied, setUrlCopied] = useState(false)
 
   const [rules, setRules] = useState<AccessRule[] | null>(null)
   const [newEmail, setNewEmail] = useState('')
@@ -353,20 +354,45 @@ export function TunnelCard({ tunnel, onRefresh }: Props) {
               Process exited unexpectedly.{tunnel.error ? ` Last log: ${tunnel.error}` : ' Check Logs for details.'}
             </span>
           )}
-          {tunnel.subdomain && (
+          {tunnel.subdomain && !tunnel.public_url && (
             <span style={{ color: 'var(--text-xdim)', fontSize: 12, fontFamily: 'var(--font-mono)' }}>
               {tunnel.subdomain}.hle.world
             </span>
           )}
-          {tunnel.public_url && (
-            <a href={tunnel.public_url} target="_blank" rel="noreferrer"
-              style={{ color: 'var(--mint)', fontSize: 13 }}>
-              {tunnel.public_url}
-            </a>
-          )}
         </div>
         <StatusBadge state={tunnel.state} />
       </div>
+
+      {/* Public URL bar */}
+      {tunnel.public_url && tunnel.state === 'CONNECTED' && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          borderRadius: 6, padding: '6px 10px',
+        }}>
+          <a href={tunnel.public_url} target="_blank" rel="noreferrer"
+            style={{
+              color: 'var(--mint)', fontSize: 13, fontFamily: 'var(--font-mono)',
+              flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              textDecoration: 'none',
+            }}>
+            {tunnel.public_url}
+          </a>
+          <button
+            style={{
+              ...btn('ghost'), padding: '3px 10px', fontSize: 11,
+              minWidth: 52, textAlign: 'center',
+            }}
+            onClick={() => {
+              navigator.clipboard.writeText(tunnel.public_url!)
+              setUrlCopied(true)
+              setTimeout(() => setUrlCopied(false), 2000)
+            }}
+          >
+            {urlCopied ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+      )}
 
       {/* Action buttons */}
       <div style={row}>
