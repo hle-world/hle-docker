@@ -118,6 +118,18 @@ def _parse_status_line(cfg_id: str, line: str) -> None:
     if "Tunnel registered:" in line:
         _connected.add(cfg_id)
         _last_errors.pop(cfg_id, None)
+        # Extract subdomain from url= field (e.g. "url=https://ha-xxxx.hle.world")
+        if "url=https://" in line:
+            try:
+                url_part = line.split("url=https://", 1)[1].split()[0]
+                subdomain = url_part.split(".hle.world")[0]
+                if subdomain:
+                    tunnels = _load_all()
+                    if cfg_id in tunnels:
+                        tunnels[cfg_id].subdomain = subdomain
+                        _save_all(tunnels)
+            except (IndexError, ValueError):
+                pass
     elif "Connection lost:" in line:
         _connected.discard(cfg_id)
         _last_errors[cfg_id] = line
