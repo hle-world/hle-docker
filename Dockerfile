@@ -1,12 +1,5 @@
-# ---------- Stage 1: Build frontend ----------
-FROM node:22-slim AS frontend
-WORKDIR /build
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
-COPY frontend/ ./
-RUN npm run build
-
-# ---------- Stage 2: Runtime ----------
+# Frontend is pre-built by hle-webapp and committed to frontend/dist/
+# via the sync-webapp.yml workflow. No Node.js needed at image build time.
 FROM python:3.12-slim
 
 RUN pip install --no-cache-dir \
@@ -15,7 +8,7 @@ RUN pip install --no-cache-dir \
         uvicorn
 
 COPY backend/ /app/backend/
-COPY --from=frontend /build/dist/ /app/backend/static/
+COPY frontend/dist/ /app/backend/static/
 COPY run.sh /run.sh
 RUN chmod +x /run.sh && mkdir -p /data/logs
 
