@@ -1,5 +1,6 @@
 node_modules/
-frontend/dist/
+# frontend/dist/ is intentionally committed — pre-built docker frontend from hle-webapp
+# Updated automatically via .github/workflows/sync-webapp.yml
 static/
 __pycache__/
 *.pyc

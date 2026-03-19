@@ -1,0 +1,53 @@
+name: Sync Frontend from hle-webapp
+
+# Triggered by hle-webapp after it builds a new release.
+# Downloads the pre-built docker frontend artifact and opens a PR
+# updating frontend/dist/ — the Dockerfile COPYs this directory directly.
+
+on:
+  repository_dispatch:
+    types: [webapp-release]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.client_payload.version }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download docker frontend artifact
+        env:
+          GH_TOKEN: ${{ secrets.HLE_PAT }}
+        run: |
+          mkdir -p frontend/dist
+          rm -rf frontend/dist/*
+          curl -sL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            "https://github.com/hle-world/hle-webapp/releases/download/v${VERSION}/hle-frontend-docker-${VERSION}.tar.gz" \
+            | tar -xz -C frontend/dist
+
+      - name: Open sync PR
+        env:
+          GH_TOKEN: ${{ secrets.HLE_PAT }}
+        run: |
+          if git diff --quiet && [ -z "$(git ls-files --others --exclude-standard frontend/dist/)" ]; then
+            echo "No frontend changes — skipping PR."
+            exit 0
+          fi
+
+          BRANCH="chore/sync-webapp-${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${BRANCH}"
+          git add frontend/dist/
+          git commit -m "chore: sync frontend from hle-webapp v${VERSION}"
+          git push -u origin "${BRANCH}"
+          gh pr create \
+            --title "chore: sync frontend from hle-webapp v${VERSION}" \
+            --body "Pre-built docker frontend from hle-webapp v${VERSION}." \
+            --base main
