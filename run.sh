@@ -15,6 +15,7 @@ if [ -z "${HLE_API_KEY}" ]; then
 fi
 
 PORT="${HLE_PORT:-8099}"
+export HLE_DATA_DIR="/data"
 mkdir -p /data/logs
 
 echo "[hle] Starting HLE on port ${PORT}..."
