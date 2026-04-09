@@ -37,8 +37,9 @@ jobs:
           GH_TOKEN: ${{ secrets.HLE_PAT }}
         run: |
           if [[ "$HEAD_REF" == sync/hle-client-v* ]]; then
-            # Client sync: version from Dockerfile pin
-            VERSION=$(grep 'hle-client==' Dockerfile | sed 's/.*hle-client==\([0-9][0-9.]*\).*/\1/')
+            # Client sync: version from Dockerfile pin + .0 patch suffix
+            CLIENT_VER=$(grep 'hle-client==' Dockerfile | sed 's/.*hle-client==\([0-9][0-9.]*\).*/\1/')
+            VERSION="${CLIENT_VER}.0"
             echo "source=client-sync" >> "$GITHUB_OUTPUT"
           else
             # Addon sync or other: bump patch from latest release tag
