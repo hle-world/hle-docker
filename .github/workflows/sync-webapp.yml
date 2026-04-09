@@ -2,7 +2,7 @@ name: Sync Frontend from hle-webapp
 
 # Triggered by hle-webapp after it builds a new release.
 # Downloads the pre-built docker frontend artifact and opens a PR
-# updating frontend/dist/ — the Dockerfile COPYs this directory directly.
+# updating frontend/dist/ -- the Dockerfile COPYs this directory directly.
 
 on:
   repository_dispatch:
@@ -41,7 +41,7 @@ jobs:
           GH_TOKEN: ${{ secrets.HLE_PAT }}
         run: |
           if git diff --quiet && [ -z "$(git ls-files --others --exclude-standard frontend/dist/)" ]; then
-            echo "No frontend changes — skipping PR."
+            echo "No frontend changes -- skipping PR."
             exit 0
           fi
 
