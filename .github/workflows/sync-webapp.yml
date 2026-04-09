@@ -7,6 +7,11 @@ name: Sync Frontend from hle-webapp
 on:
   repository_dispatch:
     types: [webapp-release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "hle-webapp version to sync (e.g. 2604.1.0)"
+        required: true
 
 permissions:
   contents: write
@@ -16,7 +21,7 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     env:
-      VERSION: ${{ github.event.client_payload.version }}
+      VERSION: ${{ github.event.client_payload.version || github.event.inputs.version }}
     steps:
       - uses: actions/checkout@v6
 
