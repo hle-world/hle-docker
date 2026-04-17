@@ -42,9 +42,14 @@ docker exec hle hle config set-key YOUR_API_KEY
 # Start a tunnel
 docker exec hle hle expose --service http://host.docker.internal:8123 --label ha
 
+# Forward webhooks from external services
+docker exec hle hle webhook --path /hook/github --forward-to http://host.docker.internal:3000 --label github-hook
+
 # List tunnels via API
 curl http://localhost:8099/api/tunnels
 ```
+
+The web UI supports creating both regular tunnels and webhook tunnels for receiving callbacks from GitHub, Stripe, and other external services.
 
 ## Docker Compose
 
