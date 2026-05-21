@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal, Optional
 
 from pydantic import BaseModel, field_validator
@@ -22,13 +23,21 @@ class TunnelConfig(BaseModel):
     forward_host: bool = False  # forward browser's Host header to local service
     response_timeout: Optional[int] = None  # server-side response timeout in seconds
     subdomain: Optional[str] = None  # populated once tunnel connects to relay
+    public_url: Optional[str] = (
+        None  # server-authoritative public URL (no client-side construction)
+    )
+    zone_domain: Optional[str] = (
+        None  # custom zone domain — informational only, never used to build URLs
+    )
+    webhook_path: Optional[str] = None  # webhook path prefix (e.g. "/webhook/github")
+    server_tunnel_id: Optional[str] = None  # server-assigned UUID
+    tier: Optional[str] = None  # billing tier from server
     stopped: bool = False  # persisted: user explicitly stopped this tunnel
 
 
 class TunnelStatus(TunnelConfig):
     state: Literal["CONNECTED", "CONNECTING", "STOPPED", "FAILED"] = "STOPPED"
     error: Optional[str] = None  # last error line from log when state is FAILED
-    public_url: Optional[str] = None
     pid: Optional[int] = None
 
 
@@ -52,6 +61,7 @@ class AddTunnelRequest(_TimeoutValidator):
     upstream_basic_auth: Optional[str] = None
     forward_host: bool = False
     response_timeout: Optional[int] = None
+    webhook_path: Optional[str] = None
 
 
 class UpdateTunnelRequest(_TimeoutValidator):
@@ -65,6 +75,7 @@ class UpdateTunnelRequest(_TimeoutValidator):
     upstream_basic_auth: Optional[str] = None  # set to "" to clear
     forward_host: Optional[bool] = None
     response_timeout: Optional[int] = None
+    webhook_path: Optional[str] = None
 
 
 class UpdateConfigRequest(BaseModel):
@@ -89,3 +100,16 @@ class CreateShareLinkRequest(BaseModel):
     duration: Literal["1h", "24h", "7d"] = "24h"
     label: str = ""
     max_uses: Optional[int] = None
+
+
+class Notice(BaseModel):
+    """Server-pushed informational message captured from CLI stdout.
+
+    The relay streams these over the tunnel's control WebSocket; the CLI
+    renders them with glyph prefixes (ℹ ✓ ⚠ ✗). The webapp parses those
+    glyphs back into a structured form for the UI.
+    """
+
+    level: Literal["info", "success", "warning", "error"]
+    message: str
+    ts: datetime
