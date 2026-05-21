@@ -86,17 +86,25 @@ async def _spawn(cfg: TunnelConfig) -> asyncio.subprocess.Process:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     if cfg.webhook_path:
         cmd = [
-            "hle", "webhook",
-            "--path", cfg.webhook_path,
-            "--forward-to", cfg.service_url,
-            "--label", cfg.label,
+            "hle",
+            "webhook",
+            "--path",
+            cfg.webhook_path,
+            "--forward-to",
+            cfg.service_url,
+            "--label",
+            cfg.label,
         ]
     else:
         cmd = [
-            "hle", "expose",
-            "--service", cfg.service_url,
-            "--label", cfg.label,
-            "--auth", cfg.auth_mode,
+            "hle",
+            "expose",
+            "--service",
+            cfg.service_url,
+            "--label",
+            cfg.label,
+            "--auth",
+            cfg.auth_mode,
         ]
         if cfg.verify_ssl:
             cmd.append("--verify-ssl")
@@ -427,9 +435,16 @@ async def update_tunnel(tunnel_id: str, req: UpdateTunnelRequest) -> TunnelConfi
     # Determine if a process restart is needed
     # Auth-mode-only changes don't need restart — server enforces per-request
     _CONNECTION_FIELDS = {
-        "service_url", "label", "verify_ssl", "websocket_enabled",
-        "upstream_basic_auth", "forward_host", "response_timeout", "api_key",
-        "webhook_path", "zone_domain",
+        "service_url",
+        "label",
+        "verify_ssl",
+        "websocket_enabled",
+        "upstream_basic_auth",
+        "forward_host",
+        "response_timeout",
+        "api_key",
+        "webhook_path",
+        "zone_domain",
     }
     needs_restart = bool(set(changed.keys()) & _CONNECTION_FIELDS)
 
