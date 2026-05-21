@@ -40,6 +40,28 @@ jobs:
             "https://github.com/hle-world/hle-webapp/releases/download/v${VERSION}/hle-frontend-docker-${VERSION}.tar.gz" \
             | tar -xz -C frontend/dist
 
+      - name: Sync canonical backend modules from hle-webapp
+        env:
+          GH_TOKEN: ${{ secrets.HLE_PAT }}
+        run: |
+          tmp=$(mktemp -d)
+          for f in models.py tunnel_manager.py hle_api.py; do
+            curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github.v3.raw" \
+              "https://api.github.com/repos/hle-world/hle-webapp/contents/backend/${f}?ref=v${VERSION}" \
+              -o "$tmp/$f"
+            if [ ! -s "$tmp/$f" ]; then
+              echo "Failed to fetch $f from hle-webapp v${VERSION}" >&2
+              exit 1
+            fi
+            mv "$tmp/$f" "backend/$f"
+          done
+          # hle-webapp and hle-docker don't share the same ruff format config,
+          # so re-format the synced files to match this repo's lint rules.
+          pip install --quiet ruff
+          ruff format backend/models.py backend/tunnel_manager.py backend/hle_api.py
+
       - name: Bump hle-client pin in Dockerfiles
         if: env.CLIENT_VERSION != ''
         run: |
@@ -55,7 +77,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.HLE_PAT }}
         run: |
-          if git diff --quiet && [ -z "$(git ls-files --others --exclude-standard frontend/dist/)" ]; then
+          if git diff --quiet && [ -z "$(git ls-files --others --exclude-standard frontend/dist/ backend/)" ]; then
             echo "No changes -- skipping PR."
             exit 0
           fi
@@ -64,7 +86,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "${BRANCH}"
-          git add frontend/dist/ Dockerfile Dockerfile.headless
+          git add frontend/dist/ backend/models.py backend/tunnel_manager.py backend/hle_api.py Dockerfile Dockerfile.headless
           if [ -n "$CLIENT_VERSION" ]; then
             COMMIT_MSG="chore: sync from hle-webapp v${VERSION} (hle-client v${CLIENT_VERSION})"
             BODY="Pre-built docker frontend from hle-webapp v${VERSION}. hle-client pin bumped to v${CLIENT_VERSION} in Dockerfile and Dockerfile.headless."

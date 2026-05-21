@@ -16,6 +16,16 @@ async def list_live_tunnels() -> list[dict]:
     return await _client().list_tunnels()
 
 
+async def get_tunnel_status(subdomain: str) -> dict:
+    """Aggregated config + live state for a tunnel (single round-trip).
+
+    Replaces the multi-call fan-out previously used by ``_monitor_tunnel``.
+    Backed by ``GET /api/tunnels/{subdomain}/status`` (rate-limited 60/min
+    per (user, subdomain) on the relay side).
+    """
+    return await _client().get_tunnel_status(subdomain)
+
+
 # ---------------------------------------------------------------------------
 # Access rules
 # ---------------------------------------------------------------------------
@@ -86,3 +96,16 @@ async def create_share_link(
 
 async def delete_share_link(subdomain: str, link_id: int) -> dict:
     return await _client().delete_share_link(subdomain, link_id)
+
+
+# ---------------------------------------------------------------------------
+# Auth mode
+# ---------------------------------------------------------------------------
+
+
+async def get_auth_mode(subdomain: str) -> dict:
+    return await _client().get_tunnel_auth_mode(subdomain)
+
+
+async def set_auth_mode(subdomain: str, auth_mode: str) -> dict:
+    return await _client().set_tunnel_auth_mode(subdomain, auth_mode)
