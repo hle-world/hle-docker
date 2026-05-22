@@ -153,18 +153,16 @@ def _is_running(proc: asyncio.subprocess.Process | None) -> bool:
 
 
 def _parse_status_line(cfg_id: str, line: str) -> None:
-    """Parse a CLI log line and update tunnel state accordingly.
+    """Extract server NOTICEs and the latest warning/error from a CLI log line.
 
-    The webapp formerly extracted the tunnel subdomain from the
-    ``url=https://...`` field of the ``Tunnel registered:`` log line.
-    Subdomain (and the rest of the live state) is now fetched
-    server-authoritatively via ``GET /api/tunnels/{subdomain}/status``
-    in :func:`_monitor_tunnel`, so this routine only tracks
-    connection-state transitions and server-pushed NOTICE messages.
+    Connection state is *not* inferred from logs — it is owned exclusively by
+    :func:`_monitor_tunnel`, which polls the relay's API and treats the
+    server's ``is_active`` as the source of truth. Log scraping for state
+    led to UI desyncs whenever a transient WARNING line (e.g. a benign
+    ``WS_FRAME for unknown stream_id`` close race) made the pill stay on
+    "Connecting" even though the relay reported the tunnel as healthy.
     """
     # Server NOTICEs are rendered by the CLI with a leading glyph + space.
-    # Match them first so a notice line never falls through to the
-    # WARNING/ERROR string heuristic below.
     glyph = line[:1]
     if glyph in _NOTICE_GLYPHS:
         message = line[1:].strip()
@@ -172,16 +170,7 @@ def _parse_status_line(cfg_id: str, line: str) -> None:
             _record_notice(cfg_id, _NOTICE_GLYPHS[glyph], message)
         return
 
-    if "Tunnel registered:" in line:
-        _connected.add(cfg_id)
-        _last_errors.pop(cfg_id, None)
-    elif "Connection lost:" in line:
-        _connected.discard(cfg_id)
-        _last_errors[cfg_id] = line
-    elif "Reconnecting in" in line:
-        _connected.discard(cfg_id)
-    elif "WARNING" in line or "ERROR" in line:
-        # Only store actual warning/error lines (not INFO traffic logs)
+    if "WARNING" in line or "ERROR" in line:
         _last_errors[cfg_id] = line
 
 
