@@ -235,6 +235,12 @@ async def _monitor_tunnel(cfg_id: str, service_url: str, label: str) -> None:
 
     # Phase 3: health monitoring — single /status call per cycle.
     # Server is authoritative for is_active, auth_mode, zone, etc.
+    #
+    # Tolerate transient is_active=False responses: only flip to disconnected
+    # after a few consecutive negatives. A single bad poll (server restart,
+    # rate-limit miss, race during reconnect) shouldn't bounce the UI.
+    inactive_streak = 0
+    DISCONNECT_THRESHOLD = 3  # ~90s of consecutive inactive polls
     while True:
         await asyncio.sleep(30)
         proc = _processes.get(cfg_id)
@@ -256,9 +262,12 @@ async def _monitor_tunnel(cfg_id: str, service_url: str, label: str) -> None:
             continue
 
         if status.get("is_active"):
+            inactive_streak = 0
             _connected.add(cfg_id)
         else:
-            _connected.discard(cfg_id)
+            inactive_streak += 1
+            if inactive_streak >= DISCONNECT_THRESHOLD:
+                _connected.discard(cfg_id)
             continue
 
         # Refresh server-authoritative fields. tier no longer flows through
