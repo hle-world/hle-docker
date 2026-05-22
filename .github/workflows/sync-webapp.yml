@@ -96,7 +96,10 @@ jobs:
           fi
           git commit -m "${COMMIT_MSG}"
           git push -u origin "${BRANCH}"
-          gh pr create \
+          PR_URL=$(gh pr create \
             --title "${COMMIT_MSG}" \
             --body "${BODY}" \
-            --base main
+            --base main)
+          echo "Opened: ${PR_URL}"
+          gh pr merge "${PR_URL}" --auto --squash || \
+            echo "::warning::Could not enable auto-merge (check repo settings)"

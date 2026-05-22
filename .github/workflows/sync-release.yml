@@ -56,27 +56,28 @@ jobs:
           git commit -m "Sync to hle-client v${VERSION}"
           git push origin "sync/hle-client-v${VERSION}"
 
-      - name: Open PR
+      - name: Open PR and enable auto-merge
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          gh pr create \
+          PR_URL=$(gh pr create \
             --base main \
             --head "sync/hle-client-v${VERSION}" \
             --title "Sync to hle-client v${VERSION}" \
             --body "$(cat <<BODY
           ## hle-client v${VERSION} released
 
-          **Review checklist before merging:**
-          - [ ] Read the [hle-client v${VERSION} release notes](https://github.com/hle-world/hle-client/releases/tag/v${VERSION})
-          - [ ] Check for new API methods in \`ApiClient\` → update \`hle_api.py\` if needed
-          - [ ] Check for new CLI flags on \`hle expose\` → update \`tunnel_manager.py\` if needed
-          - [ ] Test the Docker image with the new client version
+          Auto-merge enabled — this PR will merge when required CI checks pass.
+          The post-release smoke test in \`hle.orchistrator\` is the safety net
+          for cross-repo protocol skew.
 
           **After merging:** a release will be created automatically, triggering the Docker build.
 
           ---
           *Automated bump: \`Dockerfile\` + \`Dockerfile.headless\` → \`hle-client==${VERSION}\`*
           BODY
-          )"
+          )")
+          echo "Opened: ${PR_URL}"
+          gh pr merge "${PR_URL}" --auto --squash || \
+            echo "::warning::Could not enable auto-merge (check repo settings)"
