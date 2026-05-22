@@ -58,7 +58,9 @@ jobs:
 
       - name: Open PR and enable auto-merge
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Use HLE_PAT so the opened PR triggers test.yml on pull_request.
+          # PRs created via GITHUB_TOKEN do not fire downstream workflows.
+          GH_TOKEN: ${{ secrets.HLE_PAT }}
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
           PR_URL=$(gh pr create \
