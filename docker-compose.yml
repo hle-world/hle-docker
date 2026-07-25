@@ -11,6 +11,30 @@ services:
       - HLE_API_KEY=           # Optional: set here or configure via web UI
       # - HLE_PORT=8099        # Optional: change the internal port
 
+  # Agent mode — one container serving every tunnel you declare in the
+  # dashboard at https://hle.world/dashboard. No local UI, no per-tunnel
+  # config: add or remove endpoints in the dashboard and this container
+  # converges within seconds. No published ports needed — the agent dials out.
+  #
+  # Usage:
+  #   1. Dashboard -> Agents -> New Agent, copy the hlea_... token (shown once)
+  #   2. HLE_AGENT_TOKEN=hlea_xxxxx docker compose --profile agent up -d
+  hle-agent:
+    image: ghcr.io/hle-world/hle-docker:headless
+    container_name: hle-agent
+    restart: unless-stopped
+    profiles: ["agent"]
+    volumes:
+      - hle-agent-data:/data
+    environment:
+      - HLE_AGENT_TOKEN=${HLE_AGENT_TOKEN:?set HLE_AGENT_TOKEN to your agent token}
+    # Agent endpoints point at local services. On the default bridge network,
+    # reach the host with host.docker.internal (Docker Desktop) or the gateway
+    # IP; or attach this container to the same network as the services it
+    # fronts and use their container names.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   # Headless variant — no web UI, API + CLI only (~same size, faster build)
   # Usage: docker compose --profile headless up -d
   hle-headless:
@@ -27,3 +51,4 @@ services:
 
 volumes:
   hle-data:
+  hle-agent-data:

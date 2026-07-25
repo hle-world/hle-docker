@@ -17,5 +17,8 @@ VOLUME /data
 
 ENV HLE_API_KEY=""
 ENV HLE_PORT=8099
+# Set to an hlea_... token to run as a dashboard-managed agent instead of the
+# single-tunnel backend. See docker-compose.yml, profile "agent".
+ENV HLE_AGENT_TOKEN=""
 
 CMD ["/run.sh"]

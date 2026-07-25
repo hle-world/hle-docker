@@ -23,7 +23,9 @@ jobs:
           python-version: '3.12'
 
       - name: Install ruff
-        run: pip install ruff
+        # Pinned: backend/ is synced from hle-webapp and can't be fixed here, so
+        # an unpinned ruff turns every new default rule into a red build.
+        run: pip install ruff==0.15.9
 
       - name: Lint
         run: ruff check backend/
