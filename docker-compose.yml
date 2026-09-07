@@ -17,8 +17,13 @@ services:
   # converges within seconds. No published ports needed — the agent dials out.
   #
   # Usage:
-  #   1. Dashboard -> Agents -> New Agent, copy the hlea_... token (shown once)
-  #   2. HLE_AGENT_TOKEN=hlea_xxxxx docker compose --profile agent up -d
+  #   1. Dashboard -> Agents -> New Agent, copy the credential (shown once)
+  #   2. HLE_AGENT_TOKEN=<credential> docker compose --profile agent up -d
+  #
+  # The credential is opaque here — pass it through unchanged. Newly enrolled
+  # agents get an `hle_...` key scoped to tunnels; agents enrolled earlier hold
+  # an `hlea_...` token and keep working. Naming a prefix in these
+  # instructions would only teach people to check for the wrong one.
   hle-agent:
     image: ghcr.io/hle-world/hle-docker:headless
     container_name: hle-agent
