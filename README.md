@@ -36,14 +36,17 @@ docker run -d \
 Manage tunnels via CLI or API:
 
 ```bash
-# Set API key
-docker exec hle hle config set-key YOUR_API_KEY
+# Save your API key
+docker exec hle hle auth login --api-key YOUR_API_KEY
 
 # Start a tunnel
-docker exec hle hle expose --service http://host.docker.internal:8123 --label ha
+docker exec hle hle tunnel create ha http://host.docker.internal:8123
 
 # Forward webhooks from external services
-docker exec hle hle webhook --path /hook/github --forward-to http://host.docker.internal:3000 --label github-hook
+docker exec hle hle tunnel webhook --path /hook/github --forward-to http://host.docker.internal:3000 --label github-hook
+
+# See what is running
+docker exec hle hle status
 
 # List tunnels via API
 curl http://localhost:8099/api/tunnels
