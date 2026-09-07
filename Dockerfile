@@ -3,7 +3,7 @@
 FROM python:3.12-slim
 
 RUN pip install --no-cache-dir \
-        hle-client==2608.6 \
+        hle-client==2609.1 \
         fastapi \
         uvicorn
 
