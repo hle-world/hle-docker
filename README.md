@@ -21,7 +21,7 @@ One container serves every endpoint you declare at
 there and the container converges within seconds — no restart, no local config,
 no published ports (the agent dials out).
 
-1. In the dashboard, go to **Agents → New Agent** and copy the `hlea_…` token.
+1. In the dashboard, go to **Agents → New Agent** and copy the credential it shows.
    It is shown only once.
 2. Start the container:
 
@@ -29,7 +29,7 @@ no published ports (the agent dials out).
 docker run -d \
   --name hle-agent \
   --restart unless-stopped \
-  -e HLE_AGENT_TOKEN=hlea_xxxxx \
+  -e HLE_AGENT_TOKEN=<credential> \
   --add-host host.docker.internal:host-gateway \
   -v hle-agent-data:/data \
   ghcr.io/hle-world/hle-docker:headless
@@ -110,14 +110,14 @@ docker compose --profile headless up -d
 For agent mode, use the `agent` profile in the bundled `docker-compose.yml`:
 
 ```bash
-HLE_AGENT_TOKEN=hlea_xxxxx docker compose --profile agent up -d
+HLE_AGENT_TOKEN=<credential> docker compose --profile agent up -d
 ```
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `HLE_AGENT_TOKEN` | _(empty)_ | Agent enrollment token (`hlea_…`). When set, the container runs in agent mode and every other tunnel setting is ignored — endpoints come from the dashboard. |
+| `HLE_AGENT_TOKEN` | _(empty)_ | Agent enrollment credential, copied from the dashboard. When set, the container runs in agent mode and every other tunnel setting is ignored — endpoints come from the dashboard. |
 | `HLE_API_KEY` | _(empty)_ | Your HLE API key. Can also be set via the web UI or CLI. |
 | `HLE_PORT` | `8099` | Port the server listens on inside the container. |
 
@@ -137,7 +137,7 @@ All configuration and tunnel state is stored in `/data`. Mount a volume to persi
 
 1. Create a free account at [hle.world/register](https://hle.world/register)
 2. Go to **Agents → New Agent** in the [dashboard](https://hle.world/dashboard)
-3. Copy the `hlea_…` token — it is shown once and cannot be retrieved later
+3. Copy the credential — it is shown once and cannot be retrieved later
 
 ## Building from Source
 
