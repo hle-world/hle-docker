@@ -82,8 +82,18 @@ def _save_all(tunnels: dict[str, TunnelConfig]) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _spawn(cfg: TunnelConfig) -> asyncio.subprocess.Process:
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+def _build_argv(cfg: TunnelConfig) -> list[str]:
+    """Build the ``hle`` command line for a tunnel config.
+
+    Kept free of side effects so tests can check the argv against the
+    installed hle-client's click commands.
+
+    ``response_timeout`` is deliberately not passed: neither ``hle expose``
+    nor ``hle webhook`` accepts a timeout option, the registration payload
+    has no such field, and the relay rejects unknown ``--option`` keys. The
+    relay applies its own default. Passing ``--timeout`` made every tunnel
+    with a timeout configured fail to start ("No such option: --timeout").
+    """
     if cfg.webhook_path:
         cmd = [
             "hle",
@@ -114,8 +124,12 @@ async def _spawn(cfg: TunnelConfig) -> asyncio.subprocess.Process:
             cmd.extend(["--upstream-basic-auth", cfg.upstream_basic_auth])
         if cfg.forward_host:
             cmd.append("--forward-host")
-    if cfg.response_timeout is not None:
-        cmd.extend(["--timeout", str(cfg.response_timeout)])
+    return cmd
+
+
+async def _spawn(cfg: TunnelConfig) -> asyncio.subprocess.Process:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    cmd = _build_argv(cfg)
     env = {**os.environ}
     if cfg.api_key:
         env["HLE_API_KEY"] = cfg.api_key  # per-tunnel override; not visible in `ps`
@@ -431,7 +445,9 @@ async def update_tunnel(tunnel_id: str, req: UpdateTunnelRequest) -> TunnelConfi
             print(f"[hle] Failed to update auth_mode for {cfg.subdomain}: {exc}")
 
     # Determine if a process restart is needed
-    # Auth-mode-only changes don't need restart — server enforces per-request
+    # Auth-mode-only changes don't need restart — server enforces per-request.
+    # response_timeout is not part of the spawned argv (see _build_argv), so
+    # changing it does not warrant a restart either.
     _CONNECTION_FIELDS = {
         "service_url",
         "label",
@@ -439,7 +455,6 @@ async def update_tunnel(tunnel_id: str, req: UpdateTunnelRequest) -> TunnelConfi
         "websocket_enabled",
         "upstream_basic_auth",
         "forward_host",
-        "response_timeout",
         "api_key",
         "webhook_path",
         "zone_domain",
