@@ -20,5 +20,8 @@ ENV HLE_PORT=8099
 # Set to an hlea_... token to run as a dashboard-managed agent instead of the
 # single-tunnel backend + UI. See docker-compose.yml, profile "agent".
 ENV HLE_AGENT_TOKEN=""
+# Tells hle-client how it was installed, so `hle update` gives image-pull
+# guidance instead of guessing from /.dockerenv.
+ENV HLE_INSTALL_METHOD=docker
 
 CMD ["/run.sh"]
