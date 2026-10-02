@@ -103,11 +103,11 @@ class CreateShareLinkRequest(BaseModel):
 
 
 class Notice(BaseModel):
-    """Server-pushed informational message captured from CLI stdout.
+    """Server-pushed informational message captured from the CLI's events.
 
     The relay streams these over the tunnel's control WebSocket; the CLI
-    renders them with glyph prefixes (ℹ ✓ ⚠ ✗). The webapp parses those
-    glyphs back into a structured form for the UI.
+    turns each into a ``notice`` event on stdout under ``--events jsonl``,
+    whose ``level`` and ``message`` are recorded here for the UI.
     """
 
     level: Literal["info", "success", "warning", "error"]
