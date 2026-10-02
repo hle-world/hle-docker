@@ -38,18 +38,13 @@ _last_errors: dict[str, str] = {}
 _NOTICE_BUFFER_SIZE = 20
 _last_notices: dict[str, deque[Notice]] = {}
 
-# Map CLI glyph prefix → notice level. The CLI renders notices with these
-# leading characters (see hle_client/notices.py); we recover the level here
-# without coupling to a structured CLI output mode that does not yet exist.
-_NOTICE_GLYPHS: dict[str, str] = {
-    "ℹ": "info",
-    "✓": "success",
-    "⚠": "warning",
-    "✗": "error",
-}
+# Levels the relay can send with a NOTICE; anything else falls back to "info".
+_NOTICE_LEVELS = ("info", "success", "warning", "error")
 
 
 def _record_notice(cfg_id: str, level: str, message: str) -> None:
+    if level not in _NOTICE_LEVELS:
+        level = "info"
     buf = _last_notices.setdefault(cfg_id, deque(maxlen=_NOTICE_BUFFER_SIZE))
     buf.append(Notice(level=level, message=message, ts=datetime.now(timezone.utc)))
 
@@ -88,15 +83,22 @@ def _build_argv(cfg: TunnelConfig) -> list[str]:
     Kept free of side effects so tests can check the argv against the
     installed hle-client's click commands.
 
-    ``response_timeout`` is deliberately not passed: neither ``hle expose``
-    nor ``hle webhook`` accepts a timeout option, the registration payload
-    has no such field, and the relay rejects unknown ``--option`` keys. The
-    relay applies its own default. Passing ``--timeout`` made every tunnel
-    with a timeout configured fail to start ("No such option: --timeout").
+    ``--events jsonl`` makes the CLI write one machine-readable event per line
+    on stdout and move all human text to stderr (see hle-client
+    ``docs/events.md``). The pinned hle-client (>= 2609.10) always supports it,
+    so there is no glyph-scraping fallback.
+
+    ``response_timeout`` is deliberately not passed: neither ``hle tunnel
+    create`` nor ``hle tunnel webhook`` accepts a timeout option, the
+    registration payload has no such field, and the relay rejects unknown
+    ``--option`` keys. The relay applies its own default. Passing ``--timeout``
+    made every tunnel with a timeout configured fail to start ("No such
+    option: --timeout").
     """
     if cfg.webhook_path:
         cmd = [
             "hle",
+            "tunnel",
             "webhook",
             "--path",
             cfg.webhook_path,
@@ -108,11 +110,10 @@ def _build_argv(cfg: TunnelConfig) -> list[str]:
     else:
         cmd = [
             "hle",
-            "expose",
-            "--service",
-            cfg.service_url,
-            "--label",
+            "tunnel",
+            "create",
             cfg.label,
+            cfg.service_url,
             "--auth",
             cfg.auth_mode,
         ]
@@ -124,6 +125,7 @@ def _build_argv(cfg: TunnelConfig) -> list[str]:
             cmd.extend(["--upstream-basic-auth", cfg.upstream_basic_auth])
         if cfg.forward_host:
             cmd.append("--forward-host")
+    cmd.extend(["--events", "jsonl"])
     return cmd
 
 
@@ -136,56 +138,150 @@ async def _spawn(cfg: TunnelConfig) -> asyncio.subprocess.Process:
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
+        stderr=asyncio.subprocess.PIPE,
         env=env,
         start_new_session=True,
     )
-    # Stream stdout: write to log file AND parse for status in real-time
-    asyncio.create_task(_stream_output(cfg.id, proc))
+    # stdout carries events and nothing else; stderr carries the human text.
+    # Read them on separate tasks so neither stream can corrupt the other.
+    asyncio.create_task(_pump_output(cfg.id, proc))
     return proc
 
 
-async def _stream_output(cfg_id: str, proc: asyncio.subprocess.Process) -> None:
-    """Read CLI stdout line-by-line, write to log file, and parse status."""
-    log_path = LOG_DIR / f"tunnel-{cfg_id}.log"
-    with open(log_path, "ab") as log_file:
-        assert proc.stdout is not None
-        while True:
-            line_bytes = await proc.stdout.readline()
-            if not line_bytes:
-                break
+def _open_log(cfg_id: str):
+    """Open a tunnel's log for appending.
+
+    Opened synchronously before the readers start rather than inside a
+    coroutine. The two readers share the one handle, and neither yields
+    between a write and its flush, so their lines cannot interleave.
+    """
+    return open(LOG_DIR / f"tunnel-{cfg_id}.log", "ab")
+
+
+async def _pump_output(cfg_id: str, proc: asyncio.subprocess.Process) -> None:
+    """Drain both CLI pipes until the process closes them."""
+    log_file = _open_log(cfg_id)
+    try:
+        await asyncio.gather(
+            _stream_events(cfg_id, proc, log_file),
+            _stream_stderr(proc, log_file),
+        )
+    finally:
+        log_file.close()
+
+
+async def _stream_events(
+    cfg_id: str, proc: asyncio.subprocess.Process, log_file
+) -> None:
+    """Read JSONL events from CLI stdout and update tunnel state in real-time.
+
+    A line that is not an event object — a warning or traceback leaked onto
+    stdout, or a partial line at EOF — is appended to the log file and
+    ignored. Parsing must never stop because of one bad line.
+    """
+    assert proc.stdout is not None
+    while True:
+        line_bytes = await proc.stdout.readline()
+        if not line_bytes:
+            break
+        line = line_bytes.decode("utf-8", errors="replace").strip()
+        if not line:
+            continue
+        if not _parse_event_line(cfg_id, line):
             log_file.write(line_bytes)
             log_file.flush()
-            line = line_bytes.decode("utf-8", errors="replace").strip()
-            if not line:
-                continue
-            _parse_status_line(cfg_id, line)
+
+
+async def _stream_stderr(proc: asyncio.subprocess.Process, log_file) -> None:
+    """Copy the CLI's human-readable stderr into the per-tunnel log file."""
+    assert proc.stderr is not None
+    while True:
+        line_bytes = await proc.stderr.readline()
+        if not line_bytes:
+            break
+        log_file.write(line_bytes)
+        log_file.flush()
 
 
 def _is_running(proc: asyncio.subprocess.Process | None) -> bool:
     return proc is not None and proc.returncode is None
 
 
-def _parse_status_line(cfg_id: str, line: str) -> None:
-    """Extract server NOTICEs and the latest warning/error from a CLI log line.
+def _parse_event_line(cfg_id: str, line: str) -> bool:
+    """Apply one ``--events jsonl`` line.
 
-    Connection state is *not* inferred from logs — it is owned exclusively by
-    :func:`_monitor_tunnel`, which polls the relay's API and treats the
-    server's ``is_active`` as the source of truth. Log scraping for state
-    led to UI desyncs whenever a transient WARNING line (e.g. a benign
-    ``WS_FRAME for unknown stream_id`` close race) made the pill stay on
-    "Connecting" even though the relay reported the tunnel as healthy.
+    Returns ``False`` when the line is not a JSON event object, so the caller
+    can log it. Unknown event names are ignored, as the schema requires.
     """
-    # Server NOTICEs are rendered by the CLI with a leading glyph + space.
-    glyph = line[:1]
-    if glyph in _NOTICE_GLYPHS:
-        message = line[1:].strip()
-        if message:
-            _record_notice(cfg_id, _NOTICE_GLYPHS[glyph], message)
-        return
+    line = line.strip()
+    if not line.startswith("{"):
+        return False
+    try:
+        event = json.loads(line)
+    except ValueError:
+        return False
+    if not isinstance(event, dict) or "event" not in event:
+        return False
+    _handle_event(cfg_id, event)
+    return True
 
-    if "WARNING" in line or "ERROR" in line:
-        _last_errors[cfg_id] = line
+
+def _handle_event(cfg_id: str, event: dict) -> None:
+    """Translate one structured event into the manager's in-memory state.
+
+    Connection state is still owned by :func:`_monitor_tunnel`, which polls
+    the relay's API, but a ``registered`` event carries the relay-assigned
+    subdomain/public URL earlier and more accurately, and ``disconnected`` /
+    ``fatal`` mark the session degraded without waiting for a poll.
+    """
+    name = event.get("event")
+    message = str(event.get("message") or "").strip()
+    if name == "notice":
+        if message:
+            _record_notice(cfg_id, str(event.get("level") or "info"), message)
+    elif name == "registered":
+        subdomain = event.get("subdomain")
+        public_url = event.get("public_url")
+        if subdomain or public_url:
+            _apply_registration(cfg_id, subdomain, public_url)
+        _connected.add(cfg_id)
+        _last_errors.pop(cfg_id, None)
+    elif name in ("disconnected", "error", "fatal"):
+        _last_errors[cfg_id] = _format_event_error(message, event.get("code"))
+        if name in ("disconnected", "fatal"):
+            _connected.discard(cfg_id)
+    # `connected` (transport up, not serving yet) and unknown names: no-op.
+
+
+def _apply_registration(
+    cfg_id: str, subdomain: str | None, public_url: str | None
+) -> None:
+    """Persist the relay-authoritative subdomain/public URL from ``registered``.
+
+    Written only when a value actually changes: a reconnect re-emits the same
+    ``registered`` and must not rewrite the store each time.
+    """
+    tunnels = _load_all()
+    cfg = tunnels.get(cfg_id)
+    if cfg is None:
+        return
+    changed = False
+    if subdomain and cfg.subdomain != subdomain:
+        cfg.subdomain = subdomain
+        changed = True
+    if public_url and cfg.public_url != public_url:
+        cfg.public_url = public_url
+        changed = True
+    if changed:
+        _save_all(tunnels)
+
+
+def _format_event_error(message: str, code: object) -> str:
+    """Render an error/fatal/disconnected event for the FAILED/CONNECTING pill."""
+    text = message or "tunnel error"
+    if code is None:
+        return text
+    return f"{text} (code {code})"
 
 
 async def _monitor_tunnel(cfg_id: str, service_url: str, label: str) -> None:
@@ -583,8 +679,9 @@ def _make_status(tunnel_id: str, cfg: TunnelConfig) -> TunnelStatus:
         state = "CONNECTING"
         error = _last_errors.get(tunnel_id)
 
-    # public_url is server-authoritative (set during /status sync).
-    # For webhook tunnels, the server returns the base URL — append the path.
+    # public_url is server-authoritative, set from the `registered` event and
+    # the relay's /status sync. For webhook tunnels, the server returns the
+    # base URL — append the path.
     public_url = cfg.public_url
     if public_url and cfg.webhook_path:
         public_url = f"{public_url}{cfg.webhook_path}"
