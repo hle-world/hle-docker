@@ -50,6 +50,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.HLE_PAT }}
         run: |
+          # From a dispatch payload or a manual input, and it goes into an API
+          # path authenticated with HLE_PAT: digits only.
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]] || { echo "::error::Invalid PR number: '${PR_NUMBER}'"; exit 1; }
           files=$(gh api "repos/hle-world/ha-addon/pulls/${PR_NUMBER}/files" --paginate -q '.[].filename')
           relevant=false
           while IFS= read -r f; do
