@@ -45,13 +45,17 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
+          # A plain assignment, so a failed API call fails the job instead of
+          # reading as "nothing ships" and silently skipping the release.
+          files=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --paginate -q '.[].filename')
+          [ -n "$files" ] || { echo "::error::No changed files returned for PR #${PR_NUMBER}"; exit 1; }
           release=false
           while IFS= read -r f; do
             case "$f" in
-                 .github/*|docs-guard.toml|.gitignore|README.md|SECURITY.md) ;;
+              .github/*|docs-guard.toml|.gitignore|README.md|SECURITY.md) ;;
               *) release=true ;;
             esac
-          done < <(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --paginate -q '.[].filename')
+          done <<< "$files"
           echo "release=${release}" >> "$GITHUB_OUTPUT"
           echo "Release needed: ${release}"
 
