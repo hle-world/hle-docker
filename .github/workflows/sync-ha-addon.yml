@@ -3,10 +3,31 @@ name: Sync changes from ha-addon
 # Triggered by ha-addon's auto-release workflow when an addon-only PR
 # (not a client sync) is merged. Opens a tracking PR with the file mapping
 # so relevant backend/frontend changes can be applied to hle-docker.
+#
+# Only opens the PR when the ha-addon PR touched a file hle-docker mirrors
+# and that is not already synced from hle-webapp by sync-webapp.yml.
 
 on:
   repository_dispatch:
     types: [ha-addon-changes]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'ha-addon PR number'
+        required: true
+      pr_title:
+        description: 'ha-addon PR title'
+        required: false
+      pr_url:
+        description: 'ha-addon PR URL'
+        required: false
+      version:
+        description: 'ha-addon version'
+        required: false
+      dry_run:
+        description: 'Only evaluate the sync scope; do not create a branch or PR'
+        type: boolean
+        default: true
 
 jobs:
   sync-pr:
@@ -15,19 +36,48 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    env:
+      PR_TITLE: ${{ github.event.client_payload.pr_title || inputs.pr_title }}
+      PR_NUMBER: ${{ github.event.client_payload.pr_number || inputs.pr_number }}
+      PR_URL: ${{ github.event.client_payload.pr_url || inputs.pr_url }}
+      VERSION: ${{ github.event.client_payload.version || inputs.version }}
 
     steps:
       - uses: actions/checkout@v6
 
-      - name: Create sync branch and PR
+      - name: Determine sync scope
+        id: scope
         env:
           GH_TOKEN: ${{ secrets.HLE_PAT }}
-          PR_TITLE: ${{ github.event.client_payload.pr_title }}
-          PR_NUMBER: ${{ github.event.client_payload.pr_number }}
-          PR_URL: ${{ github.event.client_payload.pr_url }}
-          VERSION: ${{ github.event.client_payload.version }}
+        run: |
+          # From a dispatch payload or a manual input, and it goes into an API
+          # path authenticated with HLE_PAT: digits only.
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]] || { echo "::error::Invalid PR number: '${PR_NUMBER}'"; exit 1; }
+          files=$(gh api "repos/hle-world/ha-addon/pulls/${PR_NUMBER}/files" --paginate -q '.[].filename')
+          relevant=false
+          while IFS= read -r f; do
+            case "$f" in
+              hle/backend/main.py) relevant=true ;;
+            esac
+          done <<< "$files"
+          echo "relevant=${relevant}" >> "$GITHUB_OUTPUT"
+          echo "$files" | sed 's/^/changed: /'
+
+      - name: Note when nothing needs porting
+        if: steps.scope.outputs.relevant != 'true'
+        run: echo "::notice::ha-addon PR #${PR_NUMBER} changed nothing that needs porting, no sync PR"
+
+      - name: Create sync branch and PR
+        if: steps.scope.outputs.relevant == 'true' && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ secrets.HLE_PAT }}
         run: |
           BRANCH="sync/ha-addon-${PR_NUMBER}"
+
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "Branch ${BRANCH} already exists — sync PR already open, nothing to do."
+            exit 0
+          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -52,8 +102,6 @@ jobs:
           | \`hle/backend/tunnel_manager.py\` | \`backend/tunnel_manager.py\` |
           | \`hle/backend/hle_api.py\` | \`backend/hle_api.py\` |
           | \`hle/backend/models.py\` | \`backend/models.py\` |
-          | \`hle/frontend/src/components/\` | \`frontend/src/components/\` |
-          | \`hle/frontend/src/api/\` | \`frontend/src/api/\` |
 
           ### Checklist
           - [ ] Review ha-addon PR changes
