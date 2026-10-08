@@ -1,0 +1,30 @@
+name: Docs Guard
+
+# Retired claims in the docs, and code changed without the docs that describe
+# it. Rules: docs-guard.toml. The action lives in the public hle-client repo.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    # Editing the PR description is how a `Docs-Impact:` line gets added.
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-guard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The runner's python3 must be 3.11+ (the tool reads TOML with tomllib).
+      - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: '3.12'
+      - uses: hle-world/hle-client/.github/actions/docs-guard@18af6145a1c50efd1414a6e62b8c57b814e2d993  # hle-client#195

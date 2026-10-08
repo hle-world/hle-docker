@@ -1,0 +1,15 @@
+# docs-guard config for hle-docker. The tool and the shared retired-claims list
+# live in hle-world/hle-client (.github/actions/docs-guard/).
+
+[claims]
+# User-facing text only: the README, the compose file (its comments are the
+# setup instructions people copy from) and the container's startup messages.
+# Not backend/ (synced from hle-webapp, legacy names are legitimate there).
+include = ["README.md", "docker-compose.yml", "run.sh"]
+
+[[impact]]
+name = "Container interface"
+# Env vars, ports, volumes and profiles are set in these files and listed in the README.
+paths = ["docker-compose.yml", "Dockerfile", "Dockerfile.headless", "run.sh"]
+docs = ["README.md"]
+note = "The README's quick start, compose example and environment-variable table must match the ENV, EXPOSE, VOLUME, profiles and run.sh behaviour. The hle.world Docker page (integrations/docker.md in the hle repo) repeats them: put its PR in `Docs-Impact:`."
