@@ -10,7 +10,11 @@ name: Auto-release on PR merge
 #       MAJOR.MINOR, reset to <client>.0 (new patch series).
 #     - Otherwise bump the patch digit.
 #
-# Skip release: add [skip release] to the PR title
+# Skip release (any one of these is enough):
+#   - add [skip release] to the PR title
+#   - add the `no-release` label to the PR
+#   - change only files that cannot ship: .github/**, docs-guard.toml,
+#     .gitignore, README.md, SECURITY.md (see the scope step below)
 
 on:
   pull_request:
@@ -22,18 +26,42 @@ jobs:
     name: Create release
     if: >-
       github.event.pull_request.merged == true &&
-      !contains(github.event.pull_request.title, '[skip release]')
+      !contains(github.event.pull_request.title, '[skip release]') &&
+      !contains(github.event.pull_request.labels.*.name, 'no-release')
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: read
 
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
+      - name: Does this PR change anything that ships?
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # A plain assignment, so a failed API call fails the job instead of
+          # reading as "nothing ships" and silently skipping the release.
+          files=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --paginate -q '.[].filename')
+          [ -n "$files" ] || { echo "::error::No changed files returned for PR #${PR_NUMBER}"; exit 1; }
+          release=false
+          while IFS= read -r f; do
+            case "$f" in
+              .github/*|docs-guard.toml|.gitignore|README.md|SECURITY.md) ;;
+              *) release=true ;;
+            esac
+          done <<< "$files"
+          echo "release=${release}" >> "$GITHUB_OUTPUT"
+          echo "Release needed: ${release}"
+
       - name: Determine version
         id: ver
+        if: steps.scope.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ secrets.HLE_PAT }}
         run: |
@@ -59,6 +87,7 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Create release
+        if: steps.scope.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ secrets.HLE_PAT }}
           VERSION: ${{ steps.ver.outputs.version }}
