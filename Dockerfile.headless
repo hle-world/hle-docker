@@ -4,7 +4,7 @@
 FROM python:3.12-slim
 
 RUN pip install --no-cache-dir \
-        hle-client==2610.1 \
+        hle-client==2610.2 \
         fastapi \
         uvicorn
 
@@ -17,7 +17,7 @@ VOLUME /data
 
 ENV HLE_API_KEY=""
 ENV HLE_PORT=8099
-# Set to an hlea_... token to run as a dashboard-managed agent instead of the
+# Set to an `hle_...` key (older `hlea_...` tokens also work) to run as a dashboard-managed agent instead of the
 # single-tunnel backend. See docker-compose.yml, profile "agent".
 ENV HLE_AGENT_TOKEN=""
 # Tells hle-client how it was installed, so `hle update` gives image-pull
