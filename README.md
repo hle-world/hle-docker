@@ -21,7 +21,7 @@ One container serves every endpoint you declare at
 there and the container converges within seconds — no restart, no local config,
 no published ports (the agent dials out).
 
-1. In the dashboard, go to **Agents → New Agent** and copy the credential it shows.
+1. In the [dashboard](https://hle.world/dashboard/connections/agents), go to **Connections → Agents → New** and copy the credential it shows.
    It is shown only once.
 2. Start the container:
 
@@ -139,7 +139,7 @@ All configuration and tunnel state is stored in `/data`. Mount a volume to persi
 ## Getting an Agent Token
 
 1. Create a free account at [hle.world/register](https://hle.world/register)
-2. Go to **Agents → New Agent** in the [dashboard](https://hle.world/dashboard)
+2. Go to **Connections → Agents → New** in the [dashboard](https://hle.world/dashboard/connections/agents)
 3. Copy the credential — it is shown once and cannot be retrieved later
 
 ## Building from Source
