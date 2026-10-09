@@ -81,3 +81,27 @@ jobs:
           tags: ${{ steps.headless-version.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Runs the home-lab suite against the published image. The lab waits until the
+  # release exists; a missing token or failed dispatch only warns, never fails a release.
+  notify-lab:
+    name: Trigger the lab suite
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions: {}
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - name: Dispatch to hle-lab
+        env:
+          LAB_TOKEN: ${{ secrets.HLE_LAB_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$LAB_TOKEN" ]; then echo "::warning::HLE_LAB_DISPATCH_TOKEN not set; no lab run"; exit 0; fi
+          case "$RELEASE_TAG" in ""|*[!0-9A-Za-z.+-]*) echo "::warning::unexpected tag; no lab run"; exit 0 ;; esac
+          curl -fsS -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${LAB_TOKEN}" \
+            https://api.github.com/repos/jspanos/hle-lab/dispatches \
+            -d "{\"event_type\":\"docker-released\",\"client_payload\":{\"version\":\"${RELEASE_TAG}\"}}" \
+            || echo "::warning::Lab dispatch failed; no lab run for ${RELEASE_TAG}"
