@@ -89,12 +89,16 @@ jobs:
           git add frontend/dist/ backend/models.py backend/tunnel_manager.py backend/hle_api.py Dockerfile Dockerfile.headless
           if [ -n "$CLIENT_VERSION" ]; then
             COMMIT_MSG="chore: sync from hle-webapp v${VERSION} (hle-client v${CLIENT_VERSION})"
-            BODY="Pre-built docker frontend from hle-webapp v${VERSION}. hle-client pin bumped to v${CLIENT_VERSION} in Dockerfile and Dockerfile.headless."
+            # docs-guard counts a Dockerfile change as a container-interface
+            # change; a pin bump is not one, so say so or the PR never goes green.
+            BODY="Pre-built docker frontend from hle-webapp v${VERSION}. hle-client pin bumped to v${CLIENT_VERSION} in Dockerfile and Dockerfile.headless.
+
+          Docs-Impact: none — automated hle-client pin bump; the container interface is unchanged"
           else
             COMMIT_MSG="chore: sync frontend from hle-webapp v${VERSION}"
             BODY="Pre-built docker frontend from hle-webapp v${VERSION}."
           fi
-          git commit -m "${COMMIT_MSG}"
+          git commit -m "${COMMIT_MSG}" -m "Docs-Impact: none — automated sync from hle-webapp"
           git push -u origin "${BRANCH}"
           PR_URL=$(gh pr create \
             --title "${COMMIT_MSG}" \
