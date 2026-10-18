@@ -22,15 +22,18 @@ Token attempts (login form and bearer header -- the only two places a token
 is accepted; there is deliberately no query-string login, since a token in a
 URL ends up in history, Referer headers and access logs) share one limiter:
 
-* Per peer address (``request.client.host``; run.sh disables proxy headers):
-  ``MAX_FAILURES`` failures in ``FAILURE_WINDOW`` -> 429 for that address only.
-  The attempt is reserved before the token is compared, in one synchronous
-  step, so concurrent requests cannot all slip under the limit; a success
-  releases its reservation.
-* Globally: never a block, only a slowdown. When many failures arrive from
-  all addresses together, each attempt waits ``SLOWDOWN_SECONDS`` before the
-  compare, so the owner can still log in during a distributed flood.
-* A request with a valid session cookie is exempt from the limiter.
+* The token is the defence: 256 random bits when generated (an
+  ``HLE_UI_TOKEN`` override must be at least ``MIN_ENV_TOKEN_LENGTH``
+  characters), compared in constant time. Guessing it is not feasible at any
+  request rate, so the limiter only adds friction and must never be usable
+  against the owner.
+* There is no per-address lockout. Behind a reverse proxy (or an hle tunnel)
+  every visitor shares the proxy's address, so a lockout would let anyone lock
+  the owner out; keyed per address it would also be bypassable by rotating
+  addresses. Instead, when many failures arrive within ``FAILURE_WINDOW``,
+  every token attempt waits ``SLOWDOWN_SECONDS`` before the compare. That
+  slows floods without ever refusing the right token.
+* A request with a valid session cookie skips the limiter entirely.
 
 Unauthorised ``/api`` requests get 401 with a ``WWW-Authenticate`` header,
 which the UI uses to tell "log in again" apart from relay errors. A browser
@@ -58,15 +61,14 @@ TOKEN_FILENAME = "ui_token"
 COOKIE_NAME = "hle_ui_session"
 COOKIE_MAX_AGE = 30 * 24 * 3600
 AUTH_CHALLENGE = 'Bearer realm="hle-ui"'
-# Failed attempts allowed per peer address within the window before 429.
-MAX_FAILURES = 10
-FAILURE_WINDOW = 900.0
 # Failures from all addresses together within the window that switch on the
-# slowdown (never a lockout).
+# slowdown. There is deliberately no lockout (see the module docstring).
+FAILURE_WINDOW = 900.0
 GLOBAL_SLOWDOWN_AFTER = 50
 SLOWDOWN_SECONDS = 1.5
-# Addresses tracked individually (memory bound).
-MAX_TRACKED_ADDRESSES = 4096
+# A token set through HLE_UI_TOKEN must be at least this long; the generated
+# one is 43 characters (256 bits).
+MIN_ENV_TOKEN_LENGTH = 20
 
 # Paths reachable without a token. They render or process the login form and
 # return nothing about this install.
@@ -79,6 +81,11 @@ def load_or_create_token(token_file: Path) -> str:
     """Return the UI token, generating and persisting it on first use."""
     env_token = os.environ.get(TOKEN_ENV, "").strip()
     if env_token:
+        if len(env_token) < MIN_ENV_TOKEN_LENGTH:
+            raise SystemExit(
+                f"[hle] {TOKEN_ENV} must be at least {MIN_ENV_TOKEN_LENGTH} "
+                "characters; unset it to use a generated token."
+            )
         print(f"[hle] Web UI login token taken from {TOKEN_ENV}.")
         return env_token
 
@@ -147,103 +154,39 @@ def has_valid_session(request: Request, token: str) -> bool:
 
 
 class FailureLimiter:
-    """Token-attempt limiter: per-address lockout, global slowdown.
+    """Global failure counter that switches on a slowdown, never a lockout.
 
-    ``reserve`` is synchronous and must be called before the token compare,
-    with no ``await`` between the check and the increment: the attempt is
-    counted first and ``release`` gives it back on success. Concurrent
-    requests from one address therefore cannot all pass the check before any
-    failure is recorded.
-
-    Memory is bounded: each per-address deque holds at most ``max_failures``
-    timestamps and at most ``max_keys`` addresses are tracked. When the map
-    is full, expired entries are pruned; if it is still full, a new address
-    is not tracked on its own (it still counts towards, and is slowed by, the
-    global figure). Existing entries are never evicted early, so flooding new
-    addresses cannot reset an address that is locked out.
+    Memory is fixed: only the most recent ``2 * slowdown_after`` failure
+    timestamps are kept, whatever the number of attackers or addresses.
     """
 
     def __init__(
         self,
-        max_failures: int = MAX_FAILURES,
         window: float = FAILURE_WINDOW,
         slowdown_after: int = GLOBAL_SLOWDOWN_AFTER,
-        max_keys: int = MAX_TRACKED_ADDRESSES,
     ) -> None:
-        self.max_failures = max_failures
         self.window = window
         self.slowdown_after = slowdown_after
-        self.max_keys = max_keys
-        self._attempts: dict[str, deque[float]] = {}
-        # Only needs enough entries to know the threshold has been reached.
-        self._global: deque[float] = deque(maxlen=max(slowdown_after, 1) * 2)
+        self._failures: deque[float] = deque(maxlen=max(slowdown_after, 1) * 2)
 
-    def _expire(self, q: deque[float], now: float) -> None:
-        while q and now - q[0] > self.window:
-            q.popleft()
-
-    def reserve(self, key: str) -> bool:
-        """Count one attempt for ``key``; False (do not compare) if locked out."""
-        now = time.monotonic()
-        q = self._attempts.get(key)
-        if q is not None:
-            self._expire(q, now)
-            if len(q) >= self.max_failures:
-                return False
-        elif len(self._attempts) >= self.max_keys:
-            for stale in list(self._attempts):
-                self._expire(self._attempts[stale], now)
-                if not self._attempts[stale]:
-                    del self._attempts[stale]
-        if q is None and len(self._attempts) < self.max_keys:
-            q = self._attempts[key] = deque(maxlen=self.max_failures)
-        if q is not None:
-            q.append(now)
-        self._global.append(now)
-        return True
-
-    def release(self, key: str) -> None:
-        """Give back the reservation of a successful attempt."""
-        q = self._attempts.get(key)
-        if q:
-            q.pop()
-            if not q:
-                del self._attempts[key]
-        if self._global:
-            self._global.pop()
+    def record_failure(self) -> None:
+        self._failures.append(time.monotonic())
 
     def slow(self) -> bool:
-        self._expire(self._global, time.monotonic())
-        return len(self._global) >= self.slowdown_after
-
-    def tracked(self) -> int:
-        return len(self._attempts)
-
-
-def _client_key(request: Request) -> str:
-    # The socket peer only. run.sh starts uvicorn with --no-proxy-headers, so
-    # X-Forwarded-For cannot change this.
-    return request.client.host if request.client else "unknown"
+        now = time.monotonic()
+        while self._failures and now - self._failures[0] > self.window:
+            self._failures.popleft()
+        return len(self._failures) >= self.slowdown_after
 
 
-async def _checked_attempt(limiter: FailureLimiter, key: str, ok) -> bool | None:
-    """Reserve, optionally slow down, then compare. None means locked out."""
-    if not limiter.reserve(key):  # synchronous check-and-reserve
-        return None
+async def _checked_attempt(limiter: FailureLimiter, ok) -> bool:
+    """Compare a presented token, after a pause while failures are high."""
     if limiter.slow():
         await asyncio.sleep(SLOWDOWN_SECONDS)
     if ok():
-        limiter.release(key)
         return True
+    limiter.record_failure()
     return False
-
-
-def _too_many() -> JSONResponse:
-    return JSONResponse(
-        {"detail": "Too many failed login attempts. Try again later."},
-        status_code=429,
-        headers={"Retry-After": str(int(FAILURE_WINDOW)), "Cache-Control": "no-store"},
-    )
 
 
 def _is_https(request: Request) -> bool:
@@ -297,20 +240,16 @@ def install(app: FastAPI, token_file: Path) -> str:
         path = request.url.path
         if path in _OPEN_PATHS:
             return await call_next(request)
-        # A valid session is exempt from the limiter, so a flood of guesses
-        # never locks out a browser that is already logged in. (Forging the
-        # HMAC-signed cookie is not a practical guessing target.)
+        # A valid session skips the limiter, so a flood of guesses never slows
+        # a browser that is already logged in. (Forging the HMAC-signed cookie
+        # is not a practical guessing target.)
         if has_valid_session(request, token):
             return await call_next(request)
         bearer = _bearer(request)
-        if bearer:
-            result = await _checked_attempt(
-                limiter, _client_key(request), lambda: _token_matches(bearer, token)
-            )
-            if result is None:
-                return _too_many()
-            if result:
-                return await call_next(request)
+        if bearer and await _checked_attempt(
+            limiter, lambda: _token_matches(bearer, token)
+        ):
+            return await call_next(request)
         if request.method in ("GET", "HEAD") and path in _UI_ENTRY_PATHS:
             return RedirectResponse("login", status_code=303)
         return JSONResponse(
@@ -327,17 +266,9 @@ def install(app: FastAPI, token_file: Path) -> str:
     async def login(request: Request) -> Response:
         form = parse_qs((await request.body()).decode(errors="replace"))
         given = (form.get("token") or [""])[0].strip()
-        result = await _checked_attempt(
-            limiter,
-            _client_key(request),
-            lambda: bool(given) and _token_matches(given, token),
-        )
-        if result is None:
-            return _page(
-                "Too many failed attempts. Try again later.",
-                status_code=429,
-            )
-        if not result:
+        if not await _checked_attempt(
+            limiter, lambda: bool(given) and _token_matches(given, token)
+        ):
             return _page("Invalid token.", status_code=401)
         resp = RedirectResponse("./", status_code=303)
         resp.set_cookie(
