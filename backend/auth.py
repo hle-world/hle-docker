@@ -13,8 +13,14 @@ A request is authorised when it carries either:
 
 * ``Authorization: Bearer <token>`` (scripts, headless installs), or
 * the session cookie set by the ``/login`` form (browser UI). The cookie is
-  ``HttpOnly`` and ``SameSite=Strict`` and holds a value derived from the
-  token, not the token itself.
+  ``HttpOnly`` and ``SameSite=Strict`` and holds an issue time signed with
+  the token (HMAC), not the token itself. Sessions expire after
+  ``COOKIE_MAX_AGE`` server-side, and rotating the token (delete the token
+  file and restart, or change ``HLE_UI_TOKEN``) invalidates all of them.
+
+Failed token attempts (login form or bearer) are rate-limited per client
+address. There is deliberately no query-string login: a token in a URL ends
+up in browser history, Referer headers and access logs.
 
 Unauthorised ``/api`` requests get 401 with a ``WWW-Authenticate`` header,
 which the UI uses to tell "log in again" apart from relay errors. A browser
@@ -28,6 +34,8 @@ import hmac
 import html
 import os
 import secrets
+import time
+from collections import deque
 from pathlib import Path
 from urllib.parse import parse_qs
 
@@ -39,6 +47,9 @@ TOKEN_FILENAME = "ui_token"
 COOKIE_NAME = "hle_ui_session"
 COOKIE_MAX_AGE = 30 * 24 * 3600
 AUTH_CHALLENGE = 'Bearer realm="hle-ui"'
+# Failed attempts allowed per client address within the window before 429.
+MAX_FAILURES = 10
+FAILURE_WINDOW = 300.0
 
 # Paths reachable without a token. They render or process the login form and
 # return nothing about this install.
@@ -66,10 +77,12 @@ def load_or_create_token(token_file: Path) -> str:
 
     token_file.parent.mkdir(parents=True, exist_ok=True)
     token = secrets.token_urlsafe(32)
-    fd = os.open(token_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # An empty leftover file is replaced; O_EXCL then guarantees the file is
+    # created fresh with 0600 and never exists with looser permissions.
+    token_file.unlink(missing_ok=True)
+    fd = os.open(token_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as fh:
         fh.write(token + "\n")
-    os.chmod(token_file, 0o600)
     print(
         "[hle] Generated a login token for the web UI. It is shown only this "
         f"once and is stored in {token_file}:"
@@ -78,9 +91,25 @@ def load_or_create_token(token_file: Path) -> str:
     return token
 
 
-def session_value(token: str) -> str:
-    """Cookie value for a logged-in browser, derived from the token."""
-    return hmac.new(token.encode(), b"hle-ui-session", hashlib.sha256).hexdigest()
+def _sign(token: str, issued: str) -> str:
+    msg = f"hle-ui-session:{issued}".encode()
+    return hmac.new(token.encode(), msg, hashlib.sha256).hexdigest()
+
+
+def session_value(token: str, now: float | None = None) -> str:
+    """Cookie value for a logged-in browser: issue time + HMAC(token)."""
+    issued = str(int(time.time() if now is None else now))
+    return f"{issued}.{_sign(token, issued)}"
+
+
+def session_valid(token: str, value: str, now: float | None = None) -> bool:
+    issued, _, sig = value.partition(".")
+    if not issued.isdigit() or not sig:
+        return False
+    if not hmac.compare_digest(sig.encode(), _sign(token, issued).encode()):
+        return False
+    age = (time.time() if now is None else now) - int(issued)
+    return 0 <= age <= COOKIE_MAX_AGE
 
 
 def _bearer(request: Request) -> str:
@@ -91,13 +120,57 @@ def _bearer(request: Request) -> str:
     return value.strip()
 
 
+def _token_matches(given: str, token: str) -> bool:
+    return hmac.compare_digest(given.encode(), token.encode())
+
+
 def is_authorized(request: Request, token: str) -> bool:
     bearer = _bearer(request)
-    if bearer and hmac.compare_digest(bearer.encode(), token.encode()):
+    if bearer and _token_matches(bearer, token):
         return True
     cookie = request.cookies.get(COOKIE_NAME, "")
-    return bool(cookie) and hmac.compare_digest(
-        cookie.encode(), session_value(token).encode()
+    return bool(cookie) and session_valid(token, cookie)
+
+
+class FailureLimiter:
+    """Sliding-window count of failed token attempts per client address."""
+
+    def __init__(
+        self, max_failures: int = MAX_FAILURES, window: float = FAILURE_WINDOW
+    ) -> None:
+        self.max_failures = max_failures
+        self.window = window
+        self._failures: dict[str, deque[float]] = {}
+
+    def _recent(self, key: str, now: float) -> deque[float]:
+        q = self._failures.setdefault(key, deque())
+        while q and now - q[0] > self.window:
+            q.popleft()
+        if not q:
+            self._failures.pop(key, None)
+        return q
+
+    def blocked(self, key: str) -> bool:
+        return len(self._recent(key, time.monotonic())) >= self.max_failures
+
+    def record(self, key: str) -> None:
+        now = time.monotonic()
+        if len(self._failures) > 10_000:  # bound memory under address churn
+            for stale in list(self._failures):
+                self._recent(stale, now)
+        self._recent(key, now)
+        self._failures.setdefault(key, deque()).append(now)
+
+
+def _client_key(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def _too_many() -> JSONResponse:
+    return JSONResponse(
+        {"detail": "Too many failed login attempts. Try again later."},
+        status_code=429,
+        headers={"Retry-After": str(int(FAILURE_WINDOW))},
     )
 
 
@@ -144,11 +217,22 @@ def install(app: FastAPI, token_file: Path) -> str:
             headers={"Cache-Control": "no-store"},
         )
 
+    limiter = FailureLimiter()
+    app.state.ui_auth_limiter = limiter
+
     @app.middleware("http")
     async def _require_ui_token(request: Request, call_next):
         path = request.url.path
-        if path in _OPEN_PATHS or is_authorized(request, token):
+        if path in _OPEN_PATHS:
             return await call_next(request)
+        if is_authorized(request, token):
+            return await call_next(request)
+        if _bearer(request):
+            # A wrong bearer token is a guess; count it like a failed login.
+            key = _client_key(request)
+            if limiter.blocked(key):
+                return _too_many()
+            limiter.record(key)
         if request.method in ("GET", "HEAD") and path in _UI_ENTRY_PATHS:
             return RedirectResponse("login", status_code=303)
         return JSONResponse(
@@ -163,9 +247,16 @@ def install(app: FastAPI, token_file: Path) -> str:
 
     @app.post("/login", include_in_schema=False)
     async def login(request: Request) -> Response:
+        key = _client_key(request)
+        if limiter.blocked(key):
+            return _page(
+                "Too many failed attempts. Try again in a few minutes.",
+                status_code=429,
+            )
         form = parse_qs((await request.body()).decode(errors="replace"))
         given = (form.get("token") or [""])[0].strip()
-        if not given or not hmac.compare_digest(given.encode(), token.encode()):
+        if not given or not _token_matches(given, token):
+            limiter.record(key)
             return _page("Invalid token.", status_code=401)
         resp = RedirectResponse("./", status_code=303)
         resp.set_cookie(
