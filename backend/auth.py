@@ -18,9 +18,19 @@ A request is authorised when it carries either:
   ``COOKIE_MAX_AGE`` server-side, and rotating the token (delete the token
   file and restart, or change ``HLE_UI_TOKEN``) invalidates all of them.
 
-Failed token attempts (login form or bearer) are rate-limited per client
-address. There is deliberately no query-string login: a token in a URL ends
-up in browser history, Referer headers and access logs.
+Token attempts (login form and bearer header -- the only two places a token
+is accepted; there is deliberately no query-string login, since a token in a
+URL ends up in history, Referer headers and access logs) share one limiter:
+
+* Per peer address (``request.client.host``; run.sh disables proxy headers):
+  ``MAX_FAILURES`` failures in ``FAILURE_WINDOW`` -> 429 for that address only.
+  The attempt is reserved before the token is compared, in one synchronous
+  step, so concurrent requests cannot all slip under the limit; a success
+  releases its reservation.
+* Globally: never a block, only a slowdown. When many failures arrive from
+  all addresses together, each attempt waits ``SLOWDOWN_SECONDS`` before the
+  compare, so the owner can still log in during a distributed flood.
+* A request with a valid session cookie is exempt from the limiter.
 
 Unauthorised ``/api`` requests get 401 with a ``WWW-Authenticate`` header,
 which the UI uses to tell "log in again" apart from relay errors. A browser
@@ -29,6 +39,7 @@ opening the UI root is redirected to the login page.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import html
@@ -47,9 +58,15 @@ TOKEN_FILENAME = "ui_token"
 COOKIE_NAME = "hle_ui_session"
 COOKIE_MAX_AGE = 30 * 24 * 3600
 AUTH_CHALLENGE = 'Bearer realm="hle-ui"'
-# Failed attempts allowed per client address within the window before 429.
+# Failed attempts allowed per peer address within the window before 429.
 MAX_FAILURES = 10
-FAILURE_WINDOW = 300.0
+FAILURE_WINDOW = 900.0
+# Failures from all addresses together within the window that switch on the
+# slowdown (never a lockout).
+GLOBAL_SLOWDOWN_AFTER = 50
+SLOWDOWN_SECONDS = 1.5
+# Addresses tracked individually (memory bound).
+MAX_TRACKED_ADDRESSES = 4096
 
 # Paths reachable without a token. They render or process the login form and
 # return nothing about this install.
@@ -124,53 +141,108 @@ def _token_matches(given: str, token: str) -> bool:
     return hmac.compare_digest(given.encode(), token.encode())
 
 
-def is_authorized(request: Request, token: str) -> bool:
-    bearer = _bearer(request)
-    if bearer and _token_matches(bearer, token):
-        return True
+def has_valid_session(request: Request, token: str) -> bool:
     cookie = request.cookies.get(COOKIE_NAME, "")
     return bool(cookie) and session_valid(token, cookie)
 
 
 class FailureLimiter:
-    """Sliding-window count of failed token attempts per client address."""
+    """Token-attempt limiter: per-address lockout, global slowdown.
+
+    ``reserve`` is synchronous and must be called before the token compare,
+    with no ``await`` between the check and the increment: the attempt is
+    counted first and ``release`` gives it back on success. Concurrent
+    requests from one address therefore cannot all pass the check before any
+    failure is recorded.
+
+    Memory is bounded: each per-address deque holds at most ``max_failures``
+    timestamps and at most ``max_keys`` addresses are tracked. When the map
+    is full, expired entries are pruned; if it is still full, a new address
+    is not tracked on its own (it still counts towards, and is slowed by, the
+    global figure). Existing entries are never evicted early, so flooding new
+    addresses cannot reset an address that is locked out.
+    """
 
     def __init__(
-        self, max_failures: int = MAX_FAILURES, window: float = FAILURE_WINDOW
+        self,
+        max_failures: int = MAX_FAILURES,
+        window: float = FAILURE_WINDOW,
+        slowdown_after: int = GLOBAL_SLOWDOWN_AFTER,
+        max_keys: int = MAX_TRACKED_ADDRESSES,
     ) -> None:
         self.max_failures = max_failures
         self.window = window
-        self._failures: dict[str, deque[float]] = {}
+        self.slowdown_after = slowdown_after
+        self.max_keys = max_keys
+        self._attempts: dict[str, deque[float]] = {}
+        # Only needs enough entries to know the threshold has been reached.
+        self._global: deque[float] = deque(maxlen=max(slowdown_after, 1) * 2)
 
-    def _recent(self, key: str, now: float) -> deque[float]:
-        q = self._failures.setdefault(key, deque())
+    def _expire(self, q: deque[float], now: float) -> None:
         while q and now - q[0] > self.window:
             q.popleft()
-        if not q:
-            self._failures.pop(key, None)
-        return q
 
-    def blocked(self, key: str) -> bool:
-        return len(self._recent(key, time.monotonic())) >= self.max_failures
-
-    def record(self, key: str) -> None:
+    def reserve(self, key: str) -> bool:
+        """Count one attempt for ``key``; False (do not compare) if locked out."""
         now = time.monotonic()
-        if len(self._failures) > 10_000:  # bound memory under address churn
-            for stale in list(self._failures):
-                self._recent(stale, now)
-        self._recent(key, now)
-        self._failures.setdefault(key, deque()).append(now)
+        q = self._attempts.get(key)
+        if q is not None:
+            self._expire(q, now)
+            if len(q) >= self.max_failures:
+                return False
+        elif len(self._attempts) >= self.max_keys:
+            for stale in list(self._attempts):
+                self._expire(self._attempts[stale], now)
+                if not self._attempts[stale]:
+                    del self._attempts[stale]
+        if q is None and len(self._attempts) < self.max_keys:
+            q = self._attempts[key] = deque(maxlen=self.max_failures)
+        if q is not None:
+            q.append(now)
+        self._global.append(now)
+        return True
+
+    def release(self, key: str) -> None:
+        """Give back the reservation of a successful attempt."""
+        q = self._attempts.get(key)
+        if q:
+            q.pop()
+            if not q:
+                del self._attempts[key]
+        if self._global:
+            self._global.pop()
+
+    def slow(self) -> bool:
+        self._expire(self._global, time.monotonic())
+        return len(self._global) >= self.slowdown_after
+
+    def tracked(self) -> int:
+        return len(self._attempts)
 
 
 def _client_key(request: Request) -> str:
+    # The socket peer only. run.sh starts uvicorn with --no-proxy-headers, so
+    # X-Forwarded-For cannot change this.
     return request.client.host if request.client else "unknown"
+
+
+async def _checked_attempt(limiter: FailureLimiter, key: str, ok) -> bool | None:
+    """Reserve, optionally slow down, then compare. None means locked out."""
+    if not limiter.reserve(key):  # synchronous check-and-reserve
+        return None
+    if limiter.slow():
+        await asyncio.sleep(SLOWDOWN_SECONDS)
+    if ok():
+        limiter.release(key)
+        return True
+    return False
 
 
 def _too_many() -> JSONResponse:
     return JSONResponse(
         {"detail": "Too many failed login attempts. Try again later."},
         status_code=429,
-        headers={"Retry-After": str(int(FAILURE_WINDOW))},
+        headers={"Retry-After": str(int(FAILURE_WINDOW)), "Cache-Control": "no-store"},
     )
 
 
@@ -225,14 +297,20 @@ def install(app: FastAPI, token_file: Path) -> str:
         path = request.url.path
         if path in _OPEN_PATHS:
             return await call_next(request)
-        if is_authorized(request, token):
+        # A valid session is exempt from the limiter, so a flood of guesses
+        # never locks out a browser that is already logged in. (Forging the
+        # HMAC-signed cookie is not a practical guessing target.)
+        if has_valid_session(request, token):
             return await call_next(request)
-        if _bearer(request):
-            # A wrong bearer token is a guess; count it like a failed login.
-            key = _client_key(request)
-            if limiter.blocked(key):
+        bearer = _bearer(request)
+        if bearer:
+            result = await _checked_attempt(
+                limiter, _client_key(request), lambda: _token_matches(bearer, token)
+            )
+            if result is None:
                 return _too_many()
-            limiter.record(key)
+            if result:
+                return await call_next(request)
         if request.method in ("GET", "HEAD") and path in _UI_ENTRY_PATHS:
             return RedirectResponse("login", status_code=303)
         return JSONResponse(
@@ -247,16 +325,19 @@ def install(app: FastAPI, token_file: Path) -> str:
 
     @app.post("/login", include_in_schema=False)
     async def login(request: Request) -> Response:
-        key = _client_key(request)
-        if limiter.blocked(key):
-            return _page(
-                "Too many failed attempts. Try again in a few minutes.",
-                status_code=429,
-            )
         form = parse_qs((await request.body()).decode(errors="replace"))
         given = (form.get("token") or [""])[0].strip()
-        if not given or not _token_matches(given, token):
-            limiter.record(key)
+        result = await _checked_attempt(
+            limiter,
+            _client_key(request),
+            lambda: bool(given) and _token_matches(given, token),
+        )
+        if result is None:
+            return _page(
+                "Too many failed attempts. Try again later.",
+                status_code=429,
+            )
+        if not result:
             return _page("Invalid token.", status_code=401)
         resp = RedirectResponse("./", status_code=303)
         resp.set_cookie(
