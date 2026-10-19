@@ -17,6 +17,7 @@ from backend.models import (
     TunnelConfig,
     TunnelStatus,
     UpdateTunnelRequest,
+    mask_secret,
 )
 
 LOG_DIR = Path("/data/logs")
@@ -685,11 +686,20 @@ def _make_status(tunnel_id: str, cfg: TunnelConfig) -> TunnelStatus:
     public_url = cfg.public_url
     if public_url and cfg.webhook_path:
         public_url = f"{public_url}{cfg.webhook_path}"
-    payload = cfg.model_dump()
+    # Secrets stay in the persisted config; the API only says whether they
+    # are set (plus a masked key and the Basic-Auth username).
+    payload = cfg.model_dump(exclude={"api_key", "upstream_basic_auth"})
     payload["public_url"] = public_url
+    upstream_user = (
+        cfg.upstream_basic_auth.split(":", 1)[0] if cfg.upstream_basic_auth else None
+    )
     return TunnelStatus(
         **payload,
         state=state,
         error=error,
         pid=proc.pid if running else None,
+        api_key_set=bool(cfg.api_key),
+        api_key_masked=mask_secret(cfg.api_key) if cfg.api_key else None,
+        has_upstream_basic_auth=bool(cfg.upstream_basic_auth),
+        upstream_basic_auth_user=upstream_user,
     )

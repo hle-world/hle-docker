@@ -8,7 +8,9 @@ from typing import Literal, Optional
 from pydantic import BaseModel, field_validator
 
 
-class TunnelConfig(BaseModel):
+class _TunnelFields(BaseModel):
+    """Tunnel settings that are safe to return from the API."""
+
     id: str
     service_url: str
     label: str
@@ -16,10 +18,6 @@ class TunnelConfig(BaseModel):
     auth_mode: Literal["sso", "none"] = "sso"
     verify_ssl: bool = False
     websocket_enabled: bool = True
-    api_key: Optional[str] = None  # per-tunnel key override; falls back to global
-    upstream_basic_auth: Optional[str] = (
-        None  # "user:pass" injected into upstream requests
-    )
     forward_host: bool = False  # forward browser's Host header to local service
     response_timeout: Optional[int] = None  # server-side response timeout in seconds
     subdomain: Optional[str] = None  # populated once tunnel connects to relay
@@ -35,10 +33,30 @@ class TunnelConfig(BaseModel):
     stopped: bool = False  # persisted: user explicitly stopped this tunnel
 
 
-class TunnelStatus(TunnelConfig):
+class TunnelConfig(_TunnelFields):
+    """Persisted tunnel config, including secrets. Never return it from the API."""
+
+    api_key: Optional[str] = None  # per-tunnel key override; falls back to global
+    upstream_basic_auth: Optional[str] = (
+        None  # "user:pass" injected into upstream requests
+    )
+
+
+class TunnelStatus(_TunnelFields):
+    """API view of a tunnel. Secrets are reduced to set/masked indicators."""
+
     state: Literal["CONNECTED", "CONNECTING", "STOPPED", "FAILED"] = "STOPPED"
     error: Optional[str] = None  # last error line from log when state is FAILED
     pid: Optional[int] = None
+    api_key_set: bool = False  # a per-tunnel key override is configured
+    api_key_masked: Optional[str] = None  # e.g. "hle_...a1b2"; never the full key
+    has_upstream_basic_auth: bool = False
+    upstream_basic_auth_user: Optional[str] = None  # username only, never the password
+
+
+def mask_secret(value: str) -> str:
+    """Show only enough of a key to recognise it (same format as /api/config)."""
+    return f"{value[:4]}...{value[-4:]}" if len(value) > 8 else "set"
 
 
 class _TimeoutValidator(BaseModel):
