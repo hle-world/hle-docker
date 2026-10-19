@@ -39,8 +39,15 @@ if [ -z "${HLE_API_KEY}" ]; then
 fi
 
 PORT="${HLE_PORT:-8099}"
+# All interfaces inside the container so the published port works. The web UI
+# and API require the login token (printed on first start, stored in
+# /data/ui_token). To keep the port off the network entirely, publish it on
+# loopback only: "127.0.0.1:8099:8099".
+BIND_HOST="${HLE_BIND_HOST:-0.0.0.0}"
 export HLE_DATA_DIR="/data"
 mkdir -p /data/logs
 
-echo "[hle] Starting HLE on port ${PORT}..."
-exec python3 -m uvicorn backend.main:app --host 0.0.0.0 --port "${PORT}" --app-dir /app
+echo "[hle] Starting HLE on ${BIND_HOST}:${PORT}..."
+# --no-proxy-headers: the login rate limit keys on the socket peer address, so
+# a client-supplied X-Forwarded-For must not be able to change it.
+exec python3 -m uvicorn backend.main:app --host "${BIND_HOST}" --port "${PORT}" --app-dir /app --no-proxy-headers

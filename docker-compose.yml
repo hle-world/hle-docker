@@ -3,6 +3,9 @@ services:
     image: ghcr.io/hle-world/hle-docker:latest
     container_name: hle
     restart: unless-stopped
+    # The web UI asks for a login token: it is printed once on first start
+    # (docker logs hle) and stored in /data/ui_token inside the volume.
+    # Use "127.0.0.1:8099:8099" to keep the UI off your network entirely.
     ports:
       - "8099:8099"
     volumes:
@@ -10,6 +13,7 @@ services:
     environment:
       - HLE_API_KEY=           # Optional: set here or configure via web UI
       # - HLE_PORT=8099        # Optional: change the internal port
+      # - HLE_UI_TOKEN=        # Optional: fixed login token instead of the generated one
 
   # Agent mode — one container serving every tunnel you declare in the
   # dashboard at https://hle.world/dashboard. No local UI, no per-tunnel

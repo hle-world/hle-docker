@@ -52,7 +52,25 @@ docker run -d \
   ghcr.io/hle-world/hle-docker:latest
 ```
 
-Open `http://your-host:8099` and enter your API key.
+Open `http://your-host:8099`, log in with the login token (see below), then
+enter your API key.
+
+#### Login token
+
+The web UI and every `/api` route require a login token. On first start the
+container generates one, prints it once in its logs and stores it in
+`/data/ui_token` (mode 0600):
+
+```bash
+docker logs hle 2>&1 | grep -A1 "login token"
+docker exec hle cat /data/ui_token   # if the log line is gone
+```
+
+Paste it into the login page; the browser keeps an HttpOnly session cookie.
+Scripts send it as `Authorization: Bearer <token>`. Delete `/data/ui_token`
+and restart to rotate it, or set `HLE_UI_TOKEN` to use a fixed token. To keep
+the UI off your network entirely, publish the port on loopback only
+(`-p 127.0.0.1:8099:8099`).
 
 ### Headless (no UI)
 
@@ -79,8 +97,9 @@ docker exec hle hle tunnel webhook --path /hook/github --forward-to http://host.
 # See what is running
 docker exec hle hle status
 
-# List tunnels via API
-curl http://localhost:8099/api/tunnels
+# List tunnels via API (the token is in /data/ui_token)
+curl -H "Authorization: Bearer $(docker exec hle cat /data/ui_token)" \
+  http://localhost:8099/api/tunnels
 ```
 
 The web UI supports creating both regular tunnels and webhook tunnels for receiving callbacks from GitHub, Stripe, and other external services.
@@ -123,6 +142,8 @@ HLE_AGENT_TOKEN=<credential> docker compose --profile agent up -d
 | `HLE_AGENT_TOKEN` | _(empty)_ | Agent enrollment credential, copied from the dashboard. When set, the container runs in agent mode and every other tunnel setting is ignored — endpoints come from the dashboard. |
 | `HLE_API_KEY` | _(empty)_ | Your HLE API key. Can also be set via the web UI or CLI. |
 | `HLE_PORT` | `8099` | Port the server listens on inside the container. |
+| `HLE_UI_TOKEN` | _(generated)_ | Fixed login token for the web UI and API. When unset, a random token is generated on first start and stored in `/data/ui_token`. |
+| `HLE_BIND_HOST` | `0.0.0.0` | Interface the server listens on inside the container. |
 
 `HLE_AGENT_TOKEN` takes precedence over `HLE_API_KEY`. The token can also be
 stored as `agent_token` in `/data/hle_config.json`.
