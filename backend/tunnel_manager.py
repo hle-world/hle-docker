@@ -20,8 +20,19 @@ from backend.models import (
     mask_secret,
 )
 
-LOG_DIR = Path("/data/logs")
-DATA_FILE = Path("/data/tunnels.json")
+
+def _data_dir() -> Path:
+    """Resolve the persistent data directory, honouring ``HLE_DATA_DIR``.
+
+    The default stays ``/data``: this module is shared verbatim with the
+    ha-addon and Docker distributions, which mount their volume there.
+    """
+    return Path(os.environ.get("HLE_DATA_DIR", "/data"))
+
+
+DATA_DIR = _data_dir()
+LOG_DIR = DATA_DIR / "logs"
+DATA_FILE = DATA_DIR / "tunnels.json"
 
 _processes: dict[str, asyncio.subprocess.Process] = {}
 
@@ -68,9 +79,27 @@ def _load_all() -> dict[str, TunnelConfig]:
 
 
 def _save_all(tunnels: dict[str, TunnelConfig]) -> None:
-    DATA_FILE.write_text(
-        json.dumps({tid: cfg.model_dump() for tid, cfg in tunnels.items()}, indent=2)
+    """Persist all tunnel configs, including secrets, mode 0600.
+
+    Created O_TRUNC so a rewrite cannot leave stale trailing bytes, and
+    fchmod'd afterwards so an existing world-readable file is tightened too —
+    ``os.open``'s mode only applies when the file is newly created.
+    """
+    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(
+        {tid: cfg.model_dump() for tid, cfg in tunnels.items()}, indent=2
     )
+    fd = os.open(DATA_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(payload)
+    except BaseException:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -95,9 +124,17 @@ def _build_argv(cfg: TunnelConfig) -> list[str]:
     ``--option`` keys. The relay applies its own default. Passing ``--timeout``
     made every tunnel with a timeout configured fail to start ("No such
     option: --timeout").
+
+    In the ``create`` form the label and service URL are positionals. The
+    options come first and a ``--`` separator ends option parsing, so a
+    malformed value can never be read by click as an option.
+
+    Upstream Basic Auth is not passed here either: credentials in argv are
+    world-readable via ``ps``. They go through the environment instead, see
+    :func:`_build_env` and ``HLE_UPSTREAM_BASIC_AUTH``.
     """
     if cfg.webhook_path:
-        cmd = [
+        return [
             "hle",
             "tunnel",
             "webhook",
@@ -107,35 +144,50 @@ def _build_argv(cfg: TunnelConfig) -> list[str]:
             cfg.service_url,
             "--label",
             cfg.label,
+            "--events",
+            "jsonl",
         ]
-    else:
-        cmd = [
-            "hle",
-            "tunnel",
-            "create",
-            cfg.label,
-            cfg.service_url,
-            "--auth",
-            cfg.auth_mode,
-        ]
-        if cfg.verify_ssl:
-            cmd.append("--verify-ssl")
-        if not cfg.websocket_enabled:
-            cmd.append("--no-websocket")
-        if cfg.upstream_basic_auth:
-            cmd.extend(["--upstream-basic-auth", cfg.upstream_basic_auth])
-        if cfg.forward_host:
-            cmd.append("--forward-host")
+
+    cmd = [
+        "hle",
+        "tunnel",
+        "create",
+        "--auth",
+        cfg.auth_mode,
+    ]
+    if cfg.verify_ssl:
+        cmd.append("--verify-ssl")
+    if not cfg.websocket_enabled:
+        cmd.append("--no-websocket")
+    if cfg.forward_host:
+        cmd.append("--forward-host")
     cmd.extend(["--events", "jsonl"])
+    cmd.extend(["--", cfg.label, cfg.service_url])
     return cmd
+
+
+def _build_env(cfg: TunnelConfig) -> dict[str, str]:
+    """Build the child environment for a tunnel process.
+
+    Secrets are passed here, never in argv, so they do not show up in ``ps``:
+    the per-tunnel API key keying the relay session and the upstream Basic
+    Auth credentials (``HLE_UPSTREAM_BASIC_AUTH``, supported by hle-client).
+    """
+    env = {**os.environ}
+    if cfg.api_key:
+        env["HLE_API_KEY"] = cfg.api_key  # per-tunnel override; not visible in `ps`
+    if cfg.upstream_basic_auth:
+        env["HLE_UPSTREAM_BASIC_AUTH"] = cfg.upstream_basic_auth
+    else:
+        # Never inherit another tunnel's (or the host's) credentials.
+        env.pop("HLE_UPSTREAM_BASIC_AUTH", None)
+    return env
 
 
 async def _spawn(cfg: TunnelConfig) -> asyncio.subprocess.Process:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     cmd = _build_argv(cfg)
-    env = {**os.environ}
-    if cfg.api_key:
-        env["HLE_API_KEY"] = cfg.api_key  # per-tunnel override; not visible in `ps`
+    env = _build_env(cfg)
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
@@ -525,7 +577,7 @@ async def update_tunnel(tunnel_id: str, req: UpdateTunnelRequest) -> TunnelConfi
         cfg.zone_domain = None
         cfg.server_tunnel_id = None
         # Clear cached favicon when service URL changes
-        favicon_path = Path("/data/favicons") / tunnel_id
+        favicon_path = DATA_DIR / "favicons" / tunnel_id
         favicon_path.unlink(missing_ok=True)
 
     tunnels[tunnel_id] = cfg
@@ -598,7 +650,7 @@ async def remove_tunnel(tunnel_id: str) -> None:
     tunnels.pop(tunnel_id, None)
     _save_all(tunnels)
     # Clean up cached favicon
-    favicon_path = Path("/data/favicons") / tunnel_id
+    favicon_path = DATA_DIR / "favicons" / tunnel_id
     favicon_path.unlink(missing_ok=True)
 
 
