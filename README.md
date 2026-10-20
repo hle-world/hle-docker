@@ -152,6 +152,19 @@ stored as `agent_token` in `/data/hle_config.json`.
 
 All configuration and tunnel state is stored in `/data`. Mount a volume to persist across container restarts.
 
+### Unprivileged user
+
+The app runs as an unprivileged user (`hle`, uid/gid `10001`), not root. On
+start the container briefly runs as root only to hand ownership of `/data` to
+that user, so volumes created by older (root-run) versions keep working with no
+action. If you bind-mount a host directory at `/data`, its files are re-owned
+to uid `10001` on the first start. If `/data` cannot be re-owned (for example
+an NFS export with `root_squash`), the container logs a warning and keeps
+running as root; run `chown -R 10001:10001` on the host directory to fix it.
+
+To never run as root at all, pre-own the volume and start the container as that
+user (`--user 10001:10001`, or `user: "10001:10001"` in compose).
+
 ## Getting an API Key
 
 1. Create a free account at [hle.world/register](https://hle.world/register)

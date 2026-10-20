@@ -2,6 +2,32 @@
 set -e
 
 # ---------------------------------------------------------------------------
+# Privilege drop. Everything below runs as the unprivileged "hle" user
+# (uid 10001). The container starts as root only so volumes created by older
+# images (owned by root) can be handed over to that user first; once /data is
+# writable by "hle" the script re-executes itself as that user.
+#
+# Started directly as a non-root user (docker run --user / compose `user:`),
+# this block is skipped and /data must already be writable by that user.
+# ---------------------------------------------------------------------------
+if [ "$(id -u)" = "0" ]; then
+    mkdir -p /data/logs
+    # Only touch what is not already owned by hle: cheap on later starts.
+    find /data -xdev \( ! -user hle -o ! -group hle \) -exec chown hle:hle {} + 2>/dev/null || true
+    if setpriv --reuid=hle --regid=hle --init-groups test -w /data 2>/dev/null; then
+        export HOME=/home/hle
+        exec setpriv --reuid=hle --regid=hle --init-groups "$0" "$@"
+    fi
+    # e.g. an NFS export with root_squash, or a read-only/bind mount we cannot
+    # chown: keep working as before rather than refusing to start.
+    echo "[hle] WARNING: /data cannot be made writable for the unprivileged user (uid 10001); continuing as root."
+    echo "[hle] Fix: chown -R 10001:10001 on the host directory, then restart."
+elif [ ! -w "${HOME:-/}" ]; then
+    # Started with an arbitrary --user: give hle-client somewhere writable.
+    export HOME=/tmp
+fi
+
+# ---------------------------------------------------------------------------
 # Agent mode — one container, many tunnels, all managed from the dashboard.
 #
 # Enabled by setting HLE_AGENT_TOKEN (or writing agent_token into

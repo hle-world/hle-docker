@@ -9,8 +9,15 @@ RUN pip install --no-cache-dir \
         uvicorn
 
 COPY backend/ /app/backend/
+# The app runs as the unprivileged "hle" user (uid 10001). run.sh starts as root
+# only long enough to fix ownership of an existing /data volume left by older
+# root-run images, then drops privileges before starting anything.
 COPY run.sh /run.sh
-RUN chmod +x /run.sh && mkdir -p /data/logs
+RUN chmod +x /run.sh \
+    && groupadd --system --gid 10001 hle \
+    && useradd --system --uid 10001 --gid hle --home-dir /home/hle --create-home --shell /usr/sbin/nologin hle \
+    && mkdir -p /data/logs \
+    && chown -R hle:hle /data /home/hle
 
 EXPOSE 8099
 VOLUME /data
