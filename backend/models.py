@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Literal, Optional
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, field_validator
+
+# A tunnel label becomes a relay subdomain and is passed to the `hle` CLI as a
+# positional argument, so restrict it to a DNS-safe charset that can never be
+# mistaken for a CLI option.
+_LABEL_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
 
 class _TunnelFields(BaseModel):
@@ -68,7 +75,35 @@ class _TimeoutValidator(BaseModel):
         return v
 
 
-class AddTunnelRequest(_TimeoutValidator):
+class _TunnelRequestValidator(_TimeoutValidator):
+    """Validation shared by the tunnel request models.
+
+    ``label`` and ``service_url`` are handed to the spawned ``hle`` CLI as
+    positional arguments. Validating them here stops a crafted value such as
+    ``--apex`` from being parsed by click as an option.
+    """
+
+    @field_validator("label", check_fields=False)
+    @classmethod
+    def validate_label(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not _LABEL_RE.fullmatch(v):
+            raise ValueError(
+                "label must be lowercase alphanumeric with dashes "
+                "(^[a-z0-9][a-z0-9-]{0,62}$)"
+            )
+        return v
+
+    @field_validator("service_url", check_fields=False)
+    @classmethod
+    def validate_service_url(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            parsed = urlparse(v)
+            if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                raise ValueError("service_url must be an http(s) URL")
+        return v
+
+
+class AddTunnelRequest(_TunnelRequestValidator):
     service_url: str
     label: str
     name: Optional[str] = None
@@ -82,7 +117,7 @@ class AddTunnelRequest(_TimeoutValidator):
     webhook_path: Optional[str] = None
 
 
-class UpdateTunnelRequest(_TimeoutValidator):
+class UpdateTunnelRequest(_TunnelRequestValidator):
     service_url: Optional[str] = None
     label: Optional[str] = None
     name: Optional[str] = None
