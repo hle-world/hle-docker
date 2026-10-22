@@ -519,7 +519,16 @@ async def update_config(req: UpdateConfigRequest):
     if HLE_CONFIG.exists():
         current = json.loads(HLE_CONFIG.read_text())
     current["api_key"] = req.api_key
-    HLE_CONFIG.write_text(json.dumps(current, indent=2))
+    # The file holds the account API key: owner-only, even if it already existed.
+    fd = os.open(HLE_CONFIG, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fd = -1
+            fh.write(json.dumps(current, indent=2))
+    finally:
+        if fd >= 0:
+            os.close(fd)
     os.environ["HLE_API_KEY"] = req.api_key
     # Start any configured tunnels that were waiting for a key
     await tm.restore_all()
