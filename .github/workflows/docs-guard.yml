@@ -3,8 +3,6 @@ name: Docs Guard
 # Retired claims in the docs, and code changed without the docs that describe
 # it. Rules: docs-guard.toml. The action lives in the public hle-client repo.
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
     # Editing the PR description is how a `Docs-Impact:` line gets added.
@@ -19,6 +17,8 @@ concurrency:
 
 jobs:
   docs-guard:
+    # A title-only edit doesn't change the body, so there's nothing to re-check.
+    if: github.event.action != 'edited' || github.event.changes.body != null
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
