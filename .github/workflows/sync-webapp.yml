@@ -27,7 +27,7 @@ jobs:
       VERSION: ${{ github.event.client_payload.version || github.event.inputs.version }}
       CLIENT_VERSION: ${{ github.event.client_payload.hle_client_version || github.event.inputs.hle_client_version }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Validate version inputs
         # VERSION and CLIENT_VERSION come from the dispatch payload / workflow
