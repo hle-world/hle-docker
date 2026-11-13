@@ -35,6 +35,15 @@ fi
 # there is no local web UI to configure in this mode, so the container runs the
 # agent in the foreground instead of the backend + UI.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Update hle-client at start (HLE_AUTO_UPDATE=0 disables, HLE_CLIENT_VERSION
+# pins). Never blocks or fails startup: on any problem the newest version
+# already available runs. Sets HLE_BIN / HLE_PYTHON.
+# ---------------------------------------------------------------------------
+# shellcheck source=boot-update.sh
+. /boot-update.sh
+hle_boot_update || true
+
 AGENT_TOKEN="${HLE_AGENT_TOKEN}"
 if [ -z "${AGENT_TOKEN}" ] && [ -f /data/hle_config.json ]; then
     AGENT_TOKEN=$(python3 -c "import json; print(json.load(open('/data/hle_config.json')).get('agent_token',''))" 2>/dev/null || echo "")
@@ -45,9 +54,24 @@ if [ -n "${AGENT_TOKEN}" ]; then
     export HLE_DATA_DIR="/data"
     mkdir -p /data/logs
     echo "[hle] Starting in agent mode — endpoints are managed from the dashboard."
-    # Docker restarts the container on exit (restart: unless-stopped), so the
-    # agent doesn't need its own supervisor.
-    exec hle agent run
+    # Exit code 75 means "updated, restart me": the agent swapped `current` to a
+    # newer version, so start it again from there. Any other exit ends the
+    # container (Docker restarts it with restart: unless-stopped).
+    child=""
+    trap '[ -n "${child}" ] && kill -TERM "${child}" 2>/dev/null' TERM INT
+    while true; do
+        "${HLE_BIN}" agent run &
+        child=$!
+        rc=0
+        wait "${child}" || rc=$?
+        # A signal interrupts `wait`; keep waiting for the child itself.
+        while kill -0 "${child}" 2>/dev/null; do wait "${child}" || rc=$?; done
+        if [ "${rc}" -ne 75 ]; then
+            exit "${rc}"
+        fi
+        echo "[hle] Agent updated itself (exit 75); restarting."
+        hle_activate_current "$(_hle_version_of python3)" || true
+    done
 fi
 
 # Read API key from config file if not set via environment variable
@@ -76,4 +100,4 @@ mkdir -p /data/logs
 echo "[hle] Starting HLE on ${BIND_HOST}:${PORT}..."
 # --no-proxy-headers: the login rate limit keys on the socket peer address, so
 # a client-supplied X-Forwarded-For must not be able to change it.
-exec python3 -m uvicorn backend.main:app --host "${BIND_HOST}" --port "${PORT}" --app-dir /app --no-proxy-headers
+exec "${HLE_PYTHON}" -m uvicorn backend.main:app --host "${BIND_HOST}" --port "${PORT}" --app-dir /app --no-proxy-headers
