@@ -145,8 +145,33 @@ HLE_AGENT_TOKEN=<credential> docker compose --profile agent up -d
 | `HLE_UI_TOKEN` | _(generated)_ | Fixed login token for the web UI and API. When unset, a random token is generated on first start and stored in `/data/ui_token`. |
 | `HLE_BIND_HOST` | `0.0.0.0` | Interface the server listens on inside the container. |
 
+| `HLE_AUTO_UPDATE` | `1` | Set to `0` to skip the update-on-start check below. The `hle-client` version baked into the image runs. |
+| `HLE_CLIENT_VERSION` | _(empty)_ | Pin an exact `hle-client` version, for example `2611.2`. It is installed if missing and never upgraded past. Ignored when `HLE_AUTO_UPDATE=0`. |
+
 `HLE_AGENT_TOKEN` takes precedence over `HLE_API_KEY`. The token can also be
 stored as `agent_token` in `/data/hle_config.json`.
+
+## Updates
+
+Both images (`latest` and `headless`) update `hle-client` themselves when the
+container starts, so you do not need to run `docker compose pull` to get client
+fixes. On start, before the agent or web UI launches, the container looks up the
+latest `hle-client` release. If it is newer than the version in the image, it is
+installed into `/data/hle/versions/<version>`, so it survives restarts and is not
+downloaded again on every boot. One log line per start reports the installed
+version, the target version and the decision.
+
+- **Disable:** set `HLE_AUTO_UPDATE=0`. The version baked into the image runs.
+- **Pin:** set `HLE_CLIENT_VERSION=<version>`. That exact version runs and is
+  never upgraded past.
+- **Never blocks startup:** if PyPI is unreachable the lookup gives up after
+  10 seconds and the newest version already on `/data` (or in the image) runs.
+  A failed or broken install logs a warning and falls back the same way.
+- **Agent mode:** when the agent updates itself and exits with code 75, the
+  container restarts the agent in place on the new version.
+
+Pulling a new image (`docker compose pull`, or Watchtower) still works and is
+optional: a newer baked version always wins over an older one on `/data`.
 
 ## Data Persistence
 
