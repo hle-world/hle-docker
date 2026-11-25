@@ -27,4 +27,4 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
-      - uses: hle-world/hle-client/.github/actions/docs-guard@a03ac313bd480b6683850fba3a1e050eae155536  # hle-client#201
+      - uses: hle-world/hle-client/.github/actions/docs-guard@e069d218b2495571a067ac79b60e6ede7bec1562  # hle-client#201
